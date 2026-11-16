@@ -17,6 +17,7 @@ public import BLAS.Float32.Level3
 public import BLAS.Float32.GemmBlocked
 public import BLAS.Float32.Gemm
 public import BLAS.Float32.Trsm
+public import BLAS.Float32.View
 
 /-!
 # BLAS on `Float32`
