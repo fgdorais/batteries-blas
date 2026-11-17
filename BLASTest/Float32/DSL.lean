@@ -31,7 +31,14 @@ example (A : Mat m n) (x : Vec n) (y : Vec m) :
     blas%(y := α • A * x + β • y) = Mat.gemv α A x β y := by simp
 
 example (A : Mat m n) (x : Vec n) (y : Vec m) :
-    blas%(y := β • y + α • (A * x)) = Mat.gemv α A x β y := by simp
+    blas%(y := β • y + α • A * x) = Mat.gemv α A x β y := by simp
+
+-- A scalar is a product or quotient of terms, with no parentheses.
+example (a : Float32) (A : Mat m n) (x : Vec n) (y : Vec m) :
+    blas%(y := 2 * a • A * x + -β / 2 • y) = Mat.gemv (2 * a) A x (-β / 2) y := by simp
+
+example (a : Float32) (x y : Vec n) : blas%(y := (a + β) • x + y) = Vec.axpy (a + β) x y := by
+  simp
 
 example (A : Mat m n) (x : Vec n) (y : Vec m) : blas%(y := A * x) = Mat.gemv 1 A x 0 y := by
   simp
@@ -157,10 +164,10 @@ error: blas%: no single BLAS routine computes a product of three factors
 example (A B : Mat 2 2) (x y : Vec 2) : Vec 2 := blas%(y := A * B * x)
 
 /--
-error: blas%: no single BLAS routine computes this operand; write it with a separate update first
+error: blas%: no single BLAS routine computes this factor; write it with a separate update first
 -/
 #guard_msgs in
-example (A : Mat 2 2) (x z y : Vec 2) : Vec 2 := blas%(y := A * x - z)
+example (A : Mat 2 2) (x z y : Vec 2) : Vec 2 := blas%(y := A * (x - z))
 
 /--
 error: blas%: `y` occurs twice; combine its scalars

@@ -10,8 +10,9 @@ public import BLAS.Ops
 /-!
 # The `blas%` notation
 
-The root module `BLAS` doesn't import this one, because it makes `blas%` a keyword and `ᵀ` a
-postfix operator (as Mathlib does for its matrices).
+The root module `BLAS` doesn't import this one, because it makes `blas%` a keyword. Outside of
+`blas%` it adds nothing else: the right side of an update is in its own syntax category, so `ᵀ` and
+`A[:, j]` mean something only there, and `•` and `*` have the precedence of the formula.
 
 `blas% y := e` updates `y` by a single routine, chosen from the form of `e` and the kinds of its
 operands. In a `do` block it reassigns the mutable variable `y`, and as a term, `blas%(y := e)` is
@@ -30,7 +31,16 @@ the new value of `y`. `blas% y += e` is `blas% y := e + y`.
 The routine of `MulAdd` follows from the kinds of `A` and `x`: a matrix and a vector is `gemv`, a
 transpose `Aᵀ` and a vector `gemvT`, and two matrices `gemm`. A missing `α` is `1`, a missing
 `β • y` is `β = 0`, which sets `y` to `0` without reading it, as in the reference BLAS, and a bare
-`y` is `β = 1`. The summands may come in any order, and `α • (A * x)` is `α • A * x`.
+`y` is `β = 1`. The summands may come in any order.
+
+## Grammar
+
+The right side is a sum of summands `s • f * g`, with an optional scalar `s` and one or two
+factors `f` and `g`. The `•` ends the scalar, so the scalar is a product or quotient of terms, as
+in `2 * a • A * x` or `-α / 2 • x`, with no parentheses: only a scalar sum needs them,
+`(a + b) • x`, as `+` separates the summands. A scalar term and a factor are Lean terms above the
+precedence of `*`, such as `α`, `-α`, `f a`, `x.dot y` or `A.lower⁻¹`. A factor can also be a
+transpose `Aᵀ`, a column `A[:, j]` or a row `A[i, :]` of a matrix `A`, as vectors with no copy.
 
 An update that no single routine computes is an error at compile time, never a combination of
 routines: `α • x + β • y` (no `axpby` in the reference BLAS), `A * B * x`, `y := α • x` (a copy
@@ -42,18 +52,38 @@ namespace BLAS.Notation
 
 open Lean
 
+/-- A factor of a summand of a `blas%` update: a matrix, a vector, or a view of one. -/
+declare_syntax_cat blasFactor
+
+/-- A factor is a term above the precedence of `*`, such as `A`, `A.lower⁻¹` or `f x`. -/
+syntax term:75 : blasFactor
+
 /-- `Aᵀ` is the transpose of `A`, with no copy. -/
-scoped postfix:max "ᵀ" => BLAS.Transpose.mk
+syntax (name := blasTranspose) term:max noWs "ᵀ" : blasFactor
 
 /-- `A[:, j]` is column `j` of the matrix `A`, as a vector, with no copy. -/
-scoped syntax:max term noWs "[" ":" ", " term "]" : term
+syntax ident noWs "[" ":" ", " term "]" : blasFactor
 
 /-- `A[i, :]` is row `i` of the matrix `A`, as a vector, with no copy. -/
-scoped syntax:max term noWs "[" term ", " ":" "]" : term
+syntax ident noWs "[" term ", " ":" "]" : blasFactor
 
-macro_rules
-  | `($A[:, $j]) => `(($A).col $j (by get_elem_tactic))
-  | `($A[$i, :]) => `(($A).row $i (by get_elem_tactic))
+/-- A scalar of a summand of a `blas%` update. -/
+declare_syntax_cat blasScalar
+
+/-- A scalar is a product or quotient of terms above the precedence of `*`. -/
+syntax term:75 ((" * " <|> " / ") term:75)* : blasScalar
+
+/-- A summand of a `blas%` update. -/
+declare_syntax_cat blasSummand
+
+/-- A summand `s • f * g`, with an optional scalar `s` and one or more factors. -/
+syntax (atomic(blasScalar " • "))? blasFactor (" * " blasFactor)* : blasSummand
+
+/-- The right side of a `blas%` update. -/
+declare_syntax_cat blasSum
+
+/-- The right side of a `blas%` update is a sum of summands. -/
+syntax sepBy1(blasSummand, " + ") : blasSum
 
 /-- A summand of the right side of a `blas%` update, with its optional scalar. -/
 private inductive Summand where
@@ -63,55 +93,59 @@ private inductive Summand where
   | plain (c : Option Term) (x : Term)
   deriving Inhabited
 
-/-- The operators that `blas%` doesn't take in an operand, rather than reading them as a term. -/
+/-- The arithmetic that a parenthesized factor can't be, as no single routine computes it. -/
 private meta def opKinds : List SyntaxNodeKind :=
-  [``«term_-_», ``«term-_», ``«term_/_», ``«term_^_», ``«term_+_», ``«term_*_», ``«term_•_»]
+  [``«term_-_», ``«term_/_», ``«term_+_», ``«term_*_», ``«term_•_»]
 
 /-- Removes the parentheses around a term. -/
 private meta partial def unparen : Term → Term
   | `(($t)) => unparen t
   | t => t
 
-/-- The summands of `e`, from the left. -/
-private meta partial def summands (e : Term) : Array Term :=
-  match unparen e with
-  | `($a + $b) => summands a ++ summands b
-  | t => #[t]
+/-- The term of a scalar. -/
+private meta def scalar (s : TSyntax `blasScalar) : MacroM Term := do
+  let mut acc : Term := ⟨s.raw[0]⟩
+  for p in s.raw[1].getArgs do
+    let a : Term := ⟨p[1]⟩
+    acc ← if (p[0].find? (·.isToken "/")).isSome then `($acc / $a) else `($acc * $a)
+  return acc
 
-/-- Checks that `t` is an operand, not an arithmetic expression that `blas%` doesn't handle. -/
-private meta def operand (t : Term) : MacroM Term := do
-  let t := unparen t
-  if opKinds.contains t.raw.getKind then
-    Macro.throwErrorAt t "blas%: no single BLAS routine computes this operand; \
-      write it with a separate update first"
-  return t
+/-- The term of a factor. -/
+private meta def factor (f : TSyntax `blasFactor) : MacroM Term := do
+  if f.raw.isOfKind ``blasTranspose then return ← `(BLAS.Transpose.mk $(⟨f.raw[0]⟩))
+  match f with
+  | `(blasFactor| $A:ident[:, $j]) => `(($A).col $j (by get_elem_tactic))
+  | `(blasFactor| $A:ident[$i, :]) => `(($A).row $i (by get_elem_tactic))
+  | `(blasFactor| $t:term) =>
+    let t := unparen t
+    if opKinds.contains t.raw.getKind then
+      Macro.throwErrorAt t "blas%: no single BLAS routine computes this factor; \
+        write it with a separate update first"
+    return t
+  | _ => Macro.throwUnsupported
 
 /-- Classifies a summand of the right side of a `blas%` update. -/
-private meta partial def classify (t : Term) : MacroM Summand := do
-  match unparen t with
-  | `($c • $u) =>
-    match ← classify u with
-    | .prod none a x => return .prod (some c) a x
-    | .plain none x => return .plain (some c) x
-    | _ => Macro.throwErrorAt t "blas%: a summand has at most one scalar"
-  | `($a * $b) =>
-    match ← classify a, ← classify b with
-    | .plain c a, .plain none x => return .prod c (← operand a) (← operand x)
-    | .plain _ _, .plain (some _) _ =>
-      Macro.throwErrorAt t "blas%: write the scalar first, as in `α • A * x`"
-    | _, _ => Macro.throwErrorAt t "blas%: no single BLAS routine computes a product of three \
+private meta def classify (s : TSyntax `blasSummand) : MacroM Summand := do
+  match s with
+  | `(blasSummand| $[$c:blasScalar •]? $f:blasFactor $[* $gs:blasFactor]*) =>
+    let c ← c.mapM scalar
+    match gs with
+    | #[] => return .plain c (← factor f)
+    | #[g] => return .prod c (← factor f) (← factor g)
+    | _ => Macro.throwErrorAt s "blas%: no single BLAS routine computes a product of three \
         factors"
-  | u => return .plain none (← operand u)
+  | _ => Macro.throwUnsupported
 
 /-- Whether `t` is the target `y` of the update. -/
 private meta def isTarget (y : Ident) (t : Term) : Bool :=
   t.raw.isIdent && t.raw.getId == y.getId
 
-/-- The routine call of the update `y := e`. -/
-private meta def expand (y : Ident) (e : Term) : MacroM Term := do
-  let mut target : Option (Option Term) := none
+/-- The routine call of the update `y := e`, and of `y += e` if `add`. -/
+private meta def expand (y : Ident) (e : TSyntax `blasSum) (add : Bool) : MacroM Term := do
+  let `(blasSum| $[$ss:blasSummand]+*) := e | Macro.throwUnsupported
+  let mut target : Option (Option Term) := if add then some none else none
   let mut others : Array Summand := #[]
-  for t in summands e do
+  for t in ss do
     let s ← classify t
     match s with
     | .plain c x =>
@@ -151,20 +185,20 @@ private meta def expand (y : Ident) (e : Term) : MacroM Term := do
   | _, _ => fail
 
 /-- `blas%(y := e)` is the new value of `y` after the update `y := e` by a single routine. -/
-scoped syntax (name := blasTerm) "blas%(" ident " := " term ")" : term
+scoped syntax (name := blasTerm) "blas%(" ident " := " blasSum ")" : term
 
 /-- `blas%(y += e)` is `blas%(y := e + y)`. -/
-scoped syntax (name := blasAddTerm) "blas%(" ident " += " term ")" : term
+scoped syntax (name := blasAddTerm) "blas%(" ident " += " blasSum ")" : term
 
 /-- `blas% y := e` updates the mutable variable `y` by a single routine. -/
-scoped syntax (name := blasDo) "blas% " ident " := " term : doElem
+scoped syntax (name := blasDo) "blas% " ident " := " blasSum : doElem
 
 /-- `blas% y += e` is `blas% y := e + y`. -/
-scoped syntax (name := blasAddDo) "blas% " ident " += " term : doElem
+scoped syntax (name := blasAddDo) "blas% " ident " += " blasSum : doElem
 
 macro_rules
-  | `(blas%($y := $e)) => expand y e
-  | `(blas%($y += $e)) => do expand y (← `($e + $y))
+  | `(blas%($y := $e)) => expand y e false
+  | `(blas%($y += $e)) => expand y e true
 
 macro_rules
   | `(doElem| blas% $y:ident := $e) => `(doElem| $y:ident := blas%($y := $e))
