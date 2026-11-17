@@ -177,6 +177,11 @@ def rows (rounds n : Nat) : IO (List Row) := do
     for _ in [0:reps] do
       z := refAxpy 0.5 x z
     return z[0]!
+  let axpby ← time rounds n fun _ => Id.run do
+    let mut z := v
+    for _ in [0:reps] do
+      z := BLAS.Float32.Vec.axpby 0.5 v 0.5 z
+    return z.data[0]!
   let scal ← time rounds n fun _ => Id.run do
     let mut z := v
     for _ in [0:reps] do
@@ -224,7 +229,7 @@ def rows (rounds n : Nat) : IO (List Row) := do
       z := BLAS.Float32.Vec.axpy 0.5 v2 z
     return z.data[0]!
   let dot2 ← time rounds n fun _ => BLAS.Float32.Vec.dot v2 v2
-  return [⟨s!"axpy ×{reps}", axpy, some axpy'⟩,
+  return [⟨s!"axpy ×{reps}", axpy, some axpy'⟩, ⟨s!"axpby ×{reps} / axpy", axpby, some axpy⟩,
     ⟨s!"scal ×{reps}", scal, some scal'⟩, ⟨s!"copy ×{reps}", copy, none⟩,
     ⟨s!"rot ×{reps}", rot, some rot'⟩, ⟨"dot", dot, some dot'⟩, ⟨"asum", asum, some asum'⟩,
     ⟨"nrm2", nrm2, some nrm2'⟩,

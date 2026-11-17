@@ -40,6 +40,7 @@ semantics of the reference BLAS (Reference-LAPACK `master`), including its speci
 | Routine | Result | Specification |
 |---|---|---|
 | `axpy α x y` | `α * x + y`, over `y` | `if α == 0 then y[i] else α * x[i] + y[i]` |
+| `axpby α x β y` | `α * x + β * y`, over `y` (not in the reference BLAS; as OpenBLAS's `daxpby`) | `axpbyAt α β x[i] y[i]` |
 | `scal α x` | `α * x`, over `x` | `(scal α x)[i] = α * x[i]` |
 | `copy x y` | `x`, over `y` | `(copy x y)[i] = x[i]` |
 | `swap x y` | `(y, x)` | `swap_fst`, `swap_snd` |
