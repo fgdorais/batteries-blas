@@ -102,6 +102,15 @@ the sums of `gemvT`, at about half the speed of `gemm`. `gemmNT` and `gemmTT` co
 `Mat.transpose B` and run the kernels of `gemm` and `gemmTN`, which keeps each element's operations
 and their order. `getElem_gemmTN`, `getElem_gemmNT` and `getElem_gemmTT` give their elements.
 
+`Mat.gemmtr uplo α A B β C` computes `α * A * B + β * C` on the triangle `uplo` of `C` only, by the
+loops of the reference `dgemmtr`, and `Mat.gemmtrTN`, `Mat.gemmtrNT` and `Mat.gemmtrTT` do so for
+the transposed forms. As there, they only scale the triangle when `α = 0`, never skip a term, and
+have no quick return for `k = 0` and `β = 1`. `gemmtr` and `gemmtrNT` add the terms
+`α * op(B)[l, j] * A[i, l]` to `betaMul β C[i, j]` in the order of `l`, as `gemm` does, and
+`gemmtrTN` and `gemmtrTT` sum the products `A[l, i] * op(B)[l, j]` into `t` and write
+`α * t + β * C[i, j]`, or `α * t` when `β = 0`. `getElem_gemmtr`, `getElem_gemmtrTN`,
+`getElem_gemmtrNT` and `getElem_gemmtrTT` give their elements.
+
 Both `gemm` and `gemmNaive` run their kernels on packed matrices, `PMat m n`. A packed `Mat` goes to the kernel as it is,
 and a packed `C` is updated in place. Any other matrix is packed into a copy first, one `memmove`
 per column, and the columns of the result are copied back into `C`'s array.

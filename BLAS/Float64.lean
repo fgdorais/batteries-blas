@@ -27,6 +27,7 @@ public import BLAS.Float64.Symv
 public import BLAS.Float64.Symm
 public import BLAS.Float64.Syr
 public import BLAS.Float64.Syr2k
+public import BLAS.Float64.Gemmtr
 
 /-!
 # BLAS on `Float`

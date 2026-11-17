@@ -26,6 +26,13 @@ Changes that would reorder them, such as partial sums in `dot`, `asum` and `nrm2
   each pass reads `A` once for two columns of `B`. They run at about 7.5 GFLOP/s at 256–1024, half
   of `gemm`, since each column of `C` reads all of `A`. Each sum keeps its order. Not measured yet.
 
+## `gemmtr`
+
+- [ ] `gemmtr`, `gemmtrNT`: run the kernel of `gemm`, two columns and four terms at a time, on the
+  rows of each column in the triangle. They run at 5.3–7.7 GFLOP/s at 64–1024, at the speed of
+  `gemmNaive`, one column and one term at a time, against 16–20 for `gemm`. Each element keeps its
+  order of terms. Not measured yet.
+
 ## `syrk`, `syrkT`, `trsm` and `trsmRight` (6.6–9.3×, 8–11×, 2.2–4.5× and 3–8× behind at 256–1024)
 
 - [x] `syrkT`: compute four elements of a column at a time, with the sums of `gemvT`. About 2×.
