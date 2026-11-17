@@ -7,7 +7,7 @@ Basic Linear Algebra Subprograms written entirely in Lean 4, on the unboxed arra
 The routines come with proved specifications; their speed is measured, not promised.
 
 It has, on `Float64` and `Float32`, the BLAS Level 1 routines on strided vectors, `gemv`, `ger` and
-`trsv` (with their transposed forms), and `gemm`, `syrk` and `trsm` (with theirs) on matrices with
+`trsv`, `trmv` (with their transposed forms), and `gemm`, `syrk` and `trsm` (with theirs) on matrices with
 an offset and a leading dimension, as well as the mixed-precision `dsdot` and `sdsdot`. The
 `Float32` routines are in `BLAS.Float32`, with the same names and specifications as those of
 `BLAS.Float64`, on `Float32Array`.
@@ -116,6 +116,8 @@ operations of the reference BLAS in its order, although `gemv` and `gemvT` handl
 | `ger α x y A` | `α * x * yᵀ + A`, over `A` | `A[(i, j)] + x[i] * (α * y[j])`, or `A[(i, j)]` if `α = 0` or `y[j] = 0` |
 | `trsv uplo diag A x` | `A⁻¹ * x` for a triangular `A`, over `x` | `getElem_trsv_lower`, `getElem_trsv_upper` |
 | `trsvT uplo diag A x` | `A⁻ᵀ * x` for a triangular `A`, over `x` | `getElem_trsvT_upper`, `getElem_trsvT_lower` |
+| `trmv uplo diag A x` | `A * x` for a triangular `A`, over `x` | `getElem_trmv_upper`, `getElem_trmv_lower` |
+| `trmvT uplo diag A x` | `Aᵀ * x` for a triangular `A`, over `x` | `getElem_trmvT_upper`, `getElem_trmvT_lower` |
 
 These are the general cases. As in the reference BLAS, `gemv` and `gemvT` return `y` when the sum
 is empty (`n = 0`, resp. `m = 0`), only scale `y` when `α = 0`, and set it to `0` without reading
@@ -133,6 +135,14 @@ where `d.apply v a` is `v / a`, or `v` for a unit diagonal. For the upper triang
 from `l = n - 1` down to `i + 1`. `trsvT` solves `Aᵀ * y = x` by the dot-product loops of the
 reference `dtrsv`: for the upper triangle, `y[j]` subtracts `A[(i, j)] * y[i]` for `i` from `0` up
 to `j - 1`, and for the lower triangle for `i` from `n - 1` down to `j + 1`, before the division.
+
+`trmv` and `trmvT` multiply by the triangle in the same loops as the reference `dtrmv`, which
+never read an element of `x` they have already overwritten, so their specifications are folds over
+`x`: for the upper triangle, `(trmv .upper d A x)[i]` is `d.mul x[i] A[(i, i)]` plus the terms
+`x[j] * A[(i, j)]` for `j` from `i + 1` up to `n - 1`, where `d.mul v a` is `v * a`, or `v` for a
+unit diagonal. For the lower triangle, the terms run from `j = i - 1` down to `0`. `trmvT` adds the
+terms `A[(i, j)] * x[i]` of column `j`, from `i = j - 1` down to `0` for the upper triangle, and
+from `i = j + 1` up to `n - 1` for the lower one.
 
 The other Level 3 routines also run directly on any `Mat`, update their last argument in place
 when its array is not shared, and leave the elements outside the result unchanged:
