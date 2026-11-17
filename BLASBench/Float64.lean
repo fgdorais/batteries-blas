@@ -267,9 +267,9 @@ def gemmRows (rounds m : Nat) : IO (List Row × Nat) := do
 
 /--
 The Level 2 benchmarks for `m × m` matrices, ten calls per round: `gemv`, `gemvT` and `ger`, on
-packed operands, `gemv` with `x` and `y` at stride 2, and `trsv` and `trsvT` on both triangles.
-Each makes `2 * m * m` floating-point operations per call, except `trsv` and `trsvT`, which make
-about `m * m`.
+packed operands, `gemv` with `x` and `y` at stride 2, and `trsv`, `trsvT`, `trmv` and `trmvT` on
+both triangles. Each makes `2 * m * m` floating-point operations per call, except the triangular
+ones, which make about `m * m`.
 -/
 def level2Rows (rounds m : Nat) : IO (List Row × Nat) := do
   let A := mat m 1
@@ -319,11 +319,35 @@ def level2Rows (rounds m : Nat) : IO (List Row × Nat) := do
     for _ in [0:reps] do
       y := BLAS.Float64.Mat.trsvT .upper .nonUnit T y
     return y.data[0]!
+  let tlM ← time rounds m fun q => Id.run do
+    let mut y := BLAS.Float64.Vec.scal (α q) x
+    for _ in [0:reps] do
+      y := BLAS.Float64.Mat.trmv .lower .nonUnit T y
+    return y.data[0]!
+  let tuM ← time rounds m fun q => Id.run do
+    let mut y := BLAS.Float64.Vec.scal (α q) x
+    for _ in [0:reps] do
+      y := BLAS.Float64.Mat.trmv .upper .nonUnit T y
+    return y.data[0]!
+  let tlMT ← time rounds m fun q => Id.run do
+    let mut y := BLAS.Float64.Vec.scal (α q) x
+    for _ in [0:reps] do
+      y := BLAS.Float64.Mat.trmvT .lower .nonUnit T y
+    return y.data[0]!
+  let tuMT ← time rounds m fun q => Id.run do
+    let mut y := BLAS.Float64.Vec.scal (α q) x
+    for _ in [0:reps] do
+      y := BLAS.Float64.Mat.trmvT .upper .nonUnit T y
+    return y.data[0]!
   return ([⟨s!"gemv {m} ×{reps}", tv, none⟩, ⟨s!"gemvT {m} ×{reps}", tt, none⟩,
     ⟨s!"ger {m} ×{reps}", tg, none⟩, ⟨s!"gemv {m} ×{reps}, stride 2 / stride 1", tv2, some tv⟩,
     ⟨s!"trsv lower {m} ×{reps}", tl, none⟩, ⟨s!"trsv upper {m} ×{reps}", tu, none⟩,
     ⟨s!"trsvT lower {m} ×{reps} / trsv", tlT, some tl⟩,
-    ⟨s!"trsvT upper {m} ×{reps} / trsv", tuT, some tu⟩],
+    ⟨s!"trsvT upper {m} ×{reps} / trsv", tuT, some tu⟩,
+    ⟨s!"trmv lower {m} ×{reps} / trsv", tlM, some tl⟩,
+    ⟨s!"trmv upper {m} ×{reps} / trsv", tuM, some tu⟩,
+    ⟨s!"trmvT lower {m} ×{reps} / trsv", tlMT, some tl⟩,
+    ⟨s!"trmvT upper {m} ×{reps} / trsv", tuMT, some tu⟩],
     2 * m * m * reps)
 
 /--
