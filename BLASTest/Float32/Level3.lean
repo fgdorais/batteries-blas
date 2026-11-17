@@ -10,8 +10,8 @@ meta import BLAS
 meta import BLASTest.Util
 
 /-!
-Tests for `gemm`, `gemmTN`, `gemmNT`, `gemmTT`, `syrk`, `syrkT`, `trsm` and `trsmRight` on
-`Float32`.
+Tests for `gemm`, `gemmTN`, `gemmNT`, `gemmTT`, `syrk`, `syrkT`, `trsm`, `trsmRight`, `trsmT` and
+`trsmRightT` on `Float32`.
 -/
 
 open BLAS.Float32
@@ -556,3 +556,105 @@ def trsmInPlace (n : Nat) : Bool :=
     BLASTest.addr (Mat.trsmRight .lower .nonUnit 2 (triM n) B'').data == r
 
 #guard trsmInPlace 8
+
+/-! ## `trsmT` and `trsmRightT` -/
+
+/-- The loops of the reference BLAS for `trsm`, with `side = 'L'` and `transa = 'T'`. -/
+def trsmTRef (uplo : Uplo) (d : Diag) (α : Float32) (A : Mat m m) (B : Mat m n) : List Float32 :=
+  Id.run do
+  let mut b := B.toList.toArray
+  if m == 0 || n == 0 then return b.toList
+  if α == 0 then return b.toList.map fun _ => 0
+  let a (i j : Nat) := A[(i, j)]?.getD 0
+  for j in List.range n do
+    let rows := match uplo with
+      | .upper => List.range m
+      | .lower => (List.range m).reverse
+    for i in rows do
+      let mut t := α * b[i + m * j]!
+      let ks := match uplo with
+        | .upper => List.range i
+        | .lower => (List.range m).filter (i < ·)
+      for k in ks do
+        t := t - a k i * b[k + m * j]!
+      if d == .nonUnit then t := t / a i i
+      b := b.set! (i + m * j) t
+  return b.toList
+
+/-- The loops of the reference BLAS for `trsm`, with `side = 'R'` and `transa = 'T'`. -/
+def trsmRightTRef (uplo : Uplo) (d : Diag) (α : Float32) (A : Mat n n) (B : Mat m n) :
+    List Float32 := Id.run do
+  let mut b := B.toList.toArray
+  if m == 0 || n == 0 then return b.toList
+  if α == 0 then return b.toList.map fun _ => 0
+  let a (i j : Nat) := A[(i, j)]?.getD 0
+  let cols := match uplo with
+    | .upper => (List.range n).reverse
+    | .lower => List.range n
+  for k in cols do
+    if d == .nonUnit then
+      for i in List.range m do b := b.set! (i + m * k) (b[i + m * k]! / a k k)
+    let js := match uplo with
+      | .upper => List.range k
+      | .lower => (List.range n).filter (k < ·)
+    for j in js do
+      for i in List.range m do
+        b := b.set! (i + m * j) (b[i + m * j]! - a j k * b[i + m * k]!)
+    for i in List.range m do b := b.set! (i + m * k) (α * b[i + m * k]!)
+  return b.toList
+
+/--
+Whether `trsmT` and `trsmRightT` match the reference loops, on packed operands and on operands with
+offsets and leading dimensions, don't read the other triangle (nor the diagonal when it is unit),
+and leave the rest of `B`'s array unchanged.
+-/
+def trsmTMatches (m n : Nat) (uplo : Uplo) (d : Diag) (α : Float32) : Bool :=
+  let A := triM m 1 0 uplo
+  let A' := triM n 1 0 uplo
+  let B := mat m n 2
+  let B' := matLd m n 3 (m + 2) 2
+  let X := Mat.trsmT uplo d α (ldOf (withNaNs uplo d m)) B'
+  let Y := Mat.trsmRightT uplo d α (ldOf (withNaNs uplo d n)) B'
+  (Mat.trsmT uplo d α A B).toList == trsmTRef uplo d α A B &&
+    (Mat.trsmRightT uplo d α A' B).toList == trsmRightTRef uplo d α A' B &&
+    X.toList == trsmTRef uplo d α A B && Y.toList == trsmRightTRef uplo d α A' B &&
+    outside X == outside B' && outside Y == outside B'
+
+#guard [Uplo.lower, .upper].all fun u => [Diag.unit, .nonUnit].all fun d =>
+  trsmTMatches 5 3 u d 1.5 && trsmTMatches 1 1 u d 2 && trsmTMatches 17 9 u d (-0.25) &&
+    trsmTMatches 40 33 u d 1 && trsmTMatches 0 3 u d 1 && trsmTMatches 3 0 u d 1 &&
+    trsmTMatches 5 3 u d 0
+
+-- `α = 0` sets `B` to `0` without reading `A` or `B`.
+#guard
+  let nan : Float32 := 0 / 0
+  let B : Mat 2 2 := .ofFn fun _ _ => nan
+  let A : Mat 2 2 := .ofFn fun _ _ => nan
+  (Mat.trsmT .lower .nonUnit 0 A B).toList == [0, 0, 0, 0] &&
+    (Mat.trsmRightT .upper .unit 0 A B).toList == [0, 0, 0, 0]
+
+/-- The residuals `Aᵀ * X - α * B` and `X * Aᵀ - α * B` of the solves, by the transposed `gemm`:
+zero up to rounding. -/
+def trsmTResidual (n : Nat) (uplo : Uplo) : Float32 :=
+  let A := triM n 1 0 uplo
+  let B := mat n 4 2
+  let X := Mat.trsmT uplo .nonUnit 2 A B
+  let Y := Mat.trsmRightT uplo .nonUnit 2 (triM 4 1 0 uplo) B
+  let r := Mat.gemmTN 1 A X (-2) B
+  let s := Mat.gemmNT 1 Y (triM 4 1 0 uplo) (-2) B
+  (r.toList ++ s.toList).foldl (fun s v => max s v.abs) 0
+
+#guard trsmTResidual 50 .lower < 1e-4 && trsmTResidual 50 .upper < 1e-4
+
+/-- Whether `trsmT` and `trsmRightT` update an unshared `B` in place. -/
+def trsmTInPlace (n : Nat) : Bool :=
+  let (p, B) := withAddr (matLd n n 2 (n + 1) 3)
+  let (q, B') := withAddr (mat n n 3)
+  let (r, B'') := withAddr (mat n n 4)
+  let (s, B₃) := withAddr (mat n n 5)
+  BLASTest.addr (Mat.trsmT .lower .nonUnit 1 (triM n) B).data == p &&
+    BLASTest.addr (Mat.trsmT .upper .unit 2 (triM n 0 0 .upper) B₃).data == s &&
+    BLASTest.addr (Mat.trsmRightT .upper .unit 2 (triM n 0 0 .upper) B').data == q &&
+    BLASTest.addr (Mat.trsmRightT .lower .nonUnit 2 (triM n) B'').data == r
+
+#guard trsmTInPlace 8

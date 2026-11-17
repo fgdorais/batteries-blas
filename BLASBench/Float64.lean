@@ -267,8 +267,9 @@ def gemmRows (rounds m : Nat) : IO (List Row × Nat) := do
 
 /--
 The Level 2 benchmarks for `m × m` matrices, ten calls per round: `gemv`, `gemvT` and `ger`, on
-packed operands, `gemv` with `x` and `y` at stride 2, and `trsv` on both triangles. Each makes
-`2 * m * m` floating-point operations per call, except `trsv`, which makes about `m * m`.
+packed operands, `gemv` with `x` and `y` at stride 2, and `trsv` and `trsvT` on both triangles.
+Each makes `2 * m * m` floating-point operations per call, except `trsv` and `trsvT`, which make
+about `m * m`.
 -/
 def level2Rows (rounds m : Nat) : IO (List Row × Nat) := do
   let A := mat m 1
@@ -308,14 +309,27 @@ def level2Rows (rounds m : Nat) : IO (List Row × Nat) := do
     for _ in [0:reps] do
       y := BLAS.Float64.Mat.trsv .upper .nonUnit T y
     return y.data[0]!
+  let tlT ← time rounds m fun q => Id.run do
+    let mut y := BLAS.Float64.Vec.scal (α q) x
+    for _ in [0:reps] do
+      y := BLAS.Float64.Mat.trsvT .lower .nonUnit T y
+    return y.data[0]!
+  let tuT ← time rounds m fun q => Id.run do
+    let mut y := BLAS.Float64.Vec.scal (α q) x
+    for _ in [0:reps] do
+      y := BLAS.Float64.Mat.trsvT .upper .nonUnit T y
+    return y.data[0]!
   return ([⟨s!"gemv {m} ×{reps}", tv, none⟩, ⟨s!"gemvT {m} ×{reps}", tt, none⟩,
     ⟨s!"ger {m} ×{reps}", tg, none⟩, ⟨s!"gemv {m} ×{reps}, stride 2 / stride 1", tv2, some tv⟩,
-    ⟨s!"trsv lower {m} ×{reps}", tl, none⟩, ⟨s!"trsv upper {m} ×{reps}", tu, none⟩],
+    ⟨s!"trsv lower {m} ×{reps}", tl, none⟩, ⟨s!"trsv upper {m} ×{reps}", tu, none⟩,
+    ⟨s!"trsvT lower {m} ×{reps} / trsv", tlT, some tl⟩,
+    ⟨s!"trsvT upper {m} ×{reps} / trsv", tuT, some tu⟩],
     2 * m * m * reps)
 
 /--
 The `syrk` and `trsm` benchmarks for `m × m` matrices: `syrk` and `syrkT` on the lower triangle,
-`trsm` on the lower triangle and `trsmRight` on the upper one, with a non-unit diagonal. Each makes
+`trsm` and `trsmT` on the lower triangle and `trsmRight` and `trsmRightT` on the upper one, with a
+non-unit diagonal. Each makes
 about `m * m * m` floating-point operations per call. As for `gemm`, each call copies the shared
 `C` or `B` first.
 -/
@@ -330,8 +344,13 @@ def level3Rows (rounds m : Nat) : IO (List Row × Nat) := do
   let tt ← time rounds m fun q => (BLAS.Float64.Mat.syrkT .lower (α q) A 0.5 C).data[0]!
   let tl ← time rounds m fun q => (BLAS.Float64.Mat.trsm .lower .nonUnit (α q) T C).data[0]!
   let tr ← time rounds m fun q => (BLAS.Float64.Mat.trsmRight .upper .nonUnit (α q) T C).data[0]!
+  let tlT ← time rounds m fun q => (BLAS.Float64.Mat.trsmT .lower .nonUnit (α q) T C).data[0]!
+  let trT ← time rounds m fun q =>
+    (BLAS.Float64.Mat.trsmRightT .upper .nonUnit (α q) T C).data[0]!
   return ([⟨s!"syrk lower {m}", ts, none⟩, ⟨s!"syrkT lower {m}", tt, none⟩,
-    ⟨s!"trsm lower {m}", tl, none⟩, ⟨s!"trsmRight upper {m}", tr, none⟩], m * m * m)
+    ⟨s!"trsm lower {m}", tl, none⟩, ⟨s!"trsmRight upper {m}", tr, none⟩,
+    ⟨s!"trsmT lower {m} / trsm", tlT, some tl⟩,
+    ⟨s!"trsmRightT upper {m} / trsmRight", trT, some tr⟩], m * m * m)
 
 /--
 All the benchmarks: Level 1, Level 2, `gemm`, and `syrk` and `trsm`, each with its floating-point

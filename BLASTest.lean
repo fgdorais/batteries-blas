@@ -7,3 +7,4 @@ module
 import BLASTest.Basic
 import BLASTest.Float64
 import BLASTest.Float32
+import BLASTest.Mixed
