@@ -10,7 +10,8 @@ meta import BLAS
 meta import BLASTest.Util
 
 /-!
-Tests for `gemv`, `gemvT`, `ger`, `trsv`, `trsvT`, `trmv`, `trmvT` and `symv` on `Float32`.
+Tests for `gemv`, `gemvT`, `ger`, `trsv`, `trsvT`, `trmv`, `trmvT`, `symv`, `syr` and `syr2` on
+`Float32`.
 -/
 
 open BLAS.Float32
@@ -507,3 +508,88 @@ def symvInPlace (n : Nat) : Bool :=
     BLASTest.addr (Mat.symv .upper 2 (triMat n 0 0 .upper) (vec n) 0 y').data == q
 
 #guard symvInPlace 8
+
+/-! ## `syr` and `syr2` -/
+
+/-- The `2 × 2` matrix of `1`s. -/
+def ones : Mat 2 2 := .ofFn fun _ _ => 1
+
+-- `[1, 2] * [1, 2]ᵀ` on each triangle, over `1`s: the other triangle is unchanged.
+#guard (Mat.syr (n := 2) .upper 1 (.ofList [1, 2]) ones).toList == [2, 1, 3, 5]
+#guard (Mat.syr (n := 2) .lower 1 (.ofList [1, 2]) ones).toList == [2, 3, 1, 5]
+#guard (Mat.syr2 (n := 2) .upper 1 (.ofList [1, 2]) (.ofList [3, 4]) ones).toList ==
+  [7, 1, 11, 17]
+
+/-- The loops of the reference BLAS for `syr2`, or `syr` when `y` is `none`, on `Array`s. -/
+def syrRef (uplo : Uplo) (α : Float32) (x : Vec n) (y : Option (Vec n)) (A : Mat n n) :
+    List Float32 := Id.run do
+  let mut a := A.toList.toArray
+  let xs := x.toList.toArray
+  if n == 0 || α == 0 then return a.toList
+  for j in List.range n do
+    let is := match uplo with
+      | .upper => List.range (j + 1)
+      | .lower => (List.range n).filter (j ≤ ·)
+    match y with
+    | none =>
+      if xs[j]! != 0 then
+        let t := α * xs[j]!
+        for i in is do a := a.set! (i + n * j) (a[i + n * j]! + xs[i]! * t)
+    | some y =>
+      let ys := y.toList.toArray
+      if xs[j]! != 0 || ys[j]! != 0 then
+        let t₁ := α * ys[j]!
+        let t₂ := α * xs[j]!
+        for i in is do a := a.set! (i + n * j) (a[i + n * j]! + xs[i]! * t₁ + ys[i]! * t₂)
+  return a.toList
+
+/-- `vec n s` divided by `3`, so that the order of the sums changes their roundings. -/
+def thirdsVec (n : Nat) (s : Nat := 0) : Vec n :=
+  let x := vec n s
+  .ofFn fun i => x[i.val] / 3
+
+/--
+Whether `syr` and `syr2` match the reference loops bit for bit, on packed operands and on operands
+with offsets, strides and leading dimensions, leave the other triangle (here `NaN`) unchanged, and
+leave the rest of `A`'s array unchanged.
+-/
+def syrMatches (n : Nat) (uplo : Uplo) (α : Float32) : Bool :=
+  let A := thirdsMat (triMat n 1 (0 / 0) uplo)
+  let x := thirdsVec n 2
+  let y := thirdsVec n 5
+  let r := syrRef uplo α x none A
+  let r2 := syrRef uplo α x (some y) A
+  let A' := (Mat.ofLd? (Mat.ofFn (m := n + 3) (n := n) fun i j =>
+    if h : i.val < n then A[(i.val, j.val)]'⟨h, j.isLt⟩ else mark).data 0 (n + 3)).getD A
+  let x' : Vec n := (Vec.ofStride? (ScalarArray.Float32Array.ofFn (n := 1 + 2 * n) fun p =>
+    if 1 ≤ p.val ∧ (p.val - 1) % 2 = 0 then x[(p.val - 1) / 2]! else mark) 1 2).getD x
+  let y' : Vec n := (Vec.ofStride? (ScalarArray.Float32Array.ofFn (n := 3 * n) fun p =>
+    if p.val % 3 = 0 then y[p.val / 3]! else mark) 0 3).getD y
+  let B := Mat.syr uplo α x' A'
+  let B2 := Mat.syr2 uplo α x' y' A'
+  floatBits (Mat.syr uplo α x A).toList == floatBits r &&
+    floatBits (Mat.syr2 uplo α x y A).toList == floatBits r2 &&
+    floatBits B.toList == floatBits r && floatBits B2.toList == floatBits r2 &&
+    marks B.data == marks A'.data && marks B2.data == marks A'.data
+
+#guard (thirdsVec 9 2).toList.contains 0
+#guard [Uplo.lower, .upper].all fun u =>
+  syrMatches 5 u 1.5 && syrMatches 1 u 2 && syrMatches 0 u 1 && syrMatches 40 u (-0.25) &&
+    syrMatches 300 u (1 / 7) && syrMatches 17 u 0
+
+-- A column with `x[j] = 0` (and `y[j] = 0` for `syr2`) is skipped, so an infinity in `x` or `y`
+-- doesn't reach it.
+#guard
+  let inf : Float32 := 1 / 0
+  (Mat.syr (n := 2) .lower 1 (.ofList [0, inf]) ones).toList == [1, 1, 1, inf] &&
+    ((Mat.syr2 (n := 2) .lower 1 (.ofList [0, inf]) (.ofList [0, 1]) ones).toList.take 3) ==
+      [1, 1, 1]
+
+/-- Whether `syr` and `syr2` update an unshared `A` in place. -/
+def syrInPlace (n : Nat) : Bool :=
+  let (p, A) := withAddrMat (matLd n n 2 (n + 1))
+  let (q, A') := withAddrMat (matLd n n 2 (n + 1) 3)
+  BLASTest.addr (Mat.syr .lower 1 (vec n 2) A).data == p &&
+    BLASTest.addr (Mat.syr2 .upper 1 (vec n 2) (vec n 3) A').data == q
+
+#guard syrInPlace 8
