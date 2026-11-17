@@ -7,10 +7,10 @@ Basic Linear Algebra Subprograms written entirely in Lean 4, on the unboxed arra
 The routines come with proved specifications; their speed is measured, not promised.
 
 It has, on `Float64` and `Float32`, the BLAS Level 1 routines on strided vectors, `gemv`, `ger`,
-`symv` and `trsv`, `trmv` (with their transposed forms), and `gemm`, `syrk`, `trsm` and `trmm` (with
-theirs) and `symm` on matrices with an offset and a leading dimension, as well as the
-mixed-precision `dsdot` and `sdsdot`. The `Float32` routines are in `BLAS.Float32`, with the same
-names and specifications as those of `BLAS.Float64`, on `Float32Array`.
+`symv`, `syr`, `syr2` and `trsv`, `trmv` (with their transposed forms), and `gemm`, `syrk`, `syr2k`,
+`trsm` and `trmm` (with theirs) and `symm` on matrices with an offset and a leading dimension, as
+well as the mixed-precision `dsdot` and `sdsdot`. The `Float32` routines are in `BLAS.Float32`, with
+the same names and specifications as those of `BLAS.Float64`, on `Float32Array`.
 
 ## Usage
 
@@ -120,6 +120,8 @@ operations of the reference BLAS in its order, although `gemv` and `gemvT` handl
 | `trmv uplo diag A x` | `A * x` for a triangular `A`, over `x` | `getElem_trmv_upper`, `getElem_trmv_lower` |
 | `trmvT uplo diag A x` | `Aᵀ * x` for a triangular `A`, over `x` | `getElem_trmvT_upper`, `getElem_trmvT_lower` |
 | `symv uplo α A x β y` | `α * A * x + β * y` for a symmetric `A`, over `y` | `getElem_symv_upper`, `getElem_symv_lower` |
+| `syr uplo α x A` | `α * x * xᵀ + A` on the triangle `uplo` of `A` | `A[(i, j)] + x[i] * (α * x[j])`, or `A[(i, j)]` if `α = 0` or `x[j] = 0` |
+| `syr2 uplo α x y A` | `α * x * yᵀ + α * y * xᵀ + A` on the triangle `uplo` of `A` | `A[(i, j)] + x[i] * (α * y[j]) + y[i] * (α * x[j])`, or `A[(i, j)]` if `α = 0` or `x[j] = y[j] = 0` |
 
 These are the general cases. As in the reference BLAS, `gemv` and `gemvT` return `y` when the sum
 is empty (`n = 0`, resp. `m = 0`), only scale `y` when `α = 0`, and set it to `0` without reading
@@ -155,6 +157,10 @@ of the rest of the column with `x`. For the upper triangle, `(symv .upper α A x
 followed by the terms `α * x[j] * A[(i, j)]` for `j > i`; for the lower triangle the terms for
 `j < i` come first, and the dot product runs over `k > i`.
 
+`syr` and `syr2` update only the triangle `uplo` of `A`, a column at a time, by the loops of the
+reference `dsyr` and `dsyr2`, and as there skip the columns with `x[j] = 0` (with `x[j] = y[j] = 0`
+for `syr2`).
+
 The other Level 3 routines also run directly on any `Mat`, update their last argument in place
 when its array is not shared, and leave the elements outside the result unchanged:
 
@@ -162,6 +168,8 @@ when its array is not shared, and leave the elements outside the result unchange
 |---|---|---|
 | `syrk uplo α A β C` | `α * A * Aᵀ + β * C` on the triangle `uplo` of `C` | `Nat.fold k (fun l _ s => if A[(j, l)] == 0 then s else s + α * A[(j, l)] * A[(i, l)]) (betaMul β C[(i, j)])` |
 | `syrkT uplo α A β C` | `α * Aᵀ * A + β * C` on the triangle `uplo` of `C` | `α * t + β * C[(i, j)]`, or `α * t` if `β = 0`, for `t = Nat.fold k (fun l _ s => s + A[(l, i)] * A[(l, j)]) 0` |
+| `syr2k uplo α A B β C` | `α * A * Bᵀ + α * B * Aᵀ + β * C` on the triangle `uplo` of `C` | `getElem_syr2k` |
+| `syr2kT uplo α A B β C` | `α * Aᵀ * B + α * Bᵀ * A + β * C` on the triangle `uplo` of `C` | `getElem_syr2kT` |
 | `trsm uplo diag α A B` | `X` with `A * X = α * B`, over `B` | `getElem_trsm_lower`, `getElem_trsm_upper` |
 | `trsmRight uplo diag α A B` | `X` with `X * A = α * B`, over `B` | `getElem_trsmRight_upper`, `getElem_trsmRight_lower` |
 | `trsmT uplo diag α A B` | `X` with `Aᵀ * X = α * B`, over `B` | `getElem_trsmT_upper`, `getElem_trsmT_lower` |
@@ -175,14 +183,17 @@ when its array is not shared, and leave the elements outside the result unchange
 
 As in the reference `dsyrk`, `syrk` and `syrkT` only scale the triangle when `α = 0`, `syrk` skips
 the terms with `A[j, l] = 0`, so that an infinity or a `NaN` in `A` doesn't reach them, and `syrkT`
-leaves `C` unchanged when `k = 0` and `β = 1`. As in the reference `dtrsm`, `trsm` and `trsmRight`
-set `B` to `0` without reading `A` or `B` when `α = 0`, scale `B` by `α` before solving, divide by
-the diagonal, and never skip a zero of `B`. `trsm` solves each column of `B` by the loops of
-`trsv`, four columns at a time, so its specification is that of `trsv` on the scaled column;
-`trsmRight` is back substitution along the rows, from the columns already solved. `trsmT` and
-`trsmRightT` are the `transa = 'T'` cases of `dtrsm`, with the same special cases. `trsmT` solves
-each column by dot products, as `trsvT` does, except that for the lower triangle the terms run up
-from `i + 1`, as in `dtrsm`. `trsmRightT` gives each element the operations of `dtrsm`, which
+leaves `C` unchanged when `k = 0` and `β = 1`. `syr2k` and `syr2kT` are the cases of the reference
+`dsyr2k`, by the same loops with the two products: `syr2k` adds `A[i, l] * (α * B[j, l]) + B[i, l] *
+(α * A[j, l])` for each term, and skips the terms with `A[j, l] = B[j, l] = 0`, and `syr2kT` writes
+`β * C[i, j] + α * t₁ + α * t₂` from the two sums of products. As in the reference `dtrsm`, `trsm`
+and `trsmRight` set `B` to `0` without reading `A` or `B` when `α = 0`, scale `B` by `α` before
+solving, divide by the diagonal, and never skip a zero of `B`. `trsm` solves each column of `B` by
+the loops of `trsv`, four columns at a time, so its specification is that of `trsv` on the scaled
+column; `trsmRight` is back substitution along the rows, from the columns already solved. `trsmT`
+and `trsmRightT` are the `transa = 'T'` cases of `dtrsm`, with the same special cases. `trsmT`
+solves each column by dot products, as `trsvT` does, except that for the lower triangle the terms
+run up from `i + 1`, as in `dtrsm`. `trsmRightT` gives each element the operations of `dtrsm`, which
 divides each solved column by the diagonal, subtracts it from the columns still to solve, and only
 then scales it by `α`: its specification is `α` times the solution of `X * Aᵀ = B`, in that order.
 
