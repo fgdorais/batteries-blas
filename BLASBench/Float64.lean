@@ -344,6 +344,16 @@ def level2Rows (rounds m : Nat) : IO (List Row × Nat) := do
     for _ in [0:reps] do
       y := BLAS.Float64.Mat.trmvT .upper .nonUnit T y
     return y.data[0]!
+  let tsl ← time rounds m fun q => Id.run do
+    let mut y := x
+    for _ in [0:reps] do
+      y := BLAS.Float64.Mat.symv .lower (α q) T x 0.5 y
+    return y.data[0]!
+  let tsu ← time rounds m fun q => Id.run do
+    let mut y := x
+    for _ in [0:reps] do
+      y := BLAS.Float64.Mat.symv .upper (α q) T x 0.5 y
+    return y.data[0]!
   return ([⟨s!"gemv {m} ×{reps}", tv, none⟩, ⟨s!"gemvT {m} ×{reps}", tt, none⟩,
     ⟨s!"ger {m} ×{reps}", tg, none⟩, ⟨s!"gemv {m} ×{reps}, stride 2 / stride 1", tv2, some tv⟩,
     ⟨s!"trsv lower {m} ×{reps}", tl, none⟩, ⟨s!"trsv upper {m} ×{reps}", tu, none⟩,
@@ -352,14 +362,17 @@ def level2Rows (rounds m : Nat) : IO (List Row × Nat) := do
     ⟨s!"trmv lower {m} ×{reps} / trsv", tlM, some tl⟩,
     ⟨s!"trmv upper {m} ×{reps} / trsv", tuM, some tu⟩,
     ⟨s!"trmvT lower {m} ×{reps} / trsv", tlMT, some tl⟩,
-    ⟨s!"trmvT upper {m} ×{reps} / trsv", tuMT, some tu⟩],
+    ⟨s!"trmvT upper {m} ×{reps} / trsv", tuMT, some tu⟩,
+    ⟨s!"symv lower {m} ×{reps} / gemv", tsl, some tv⟩,
+    ⟨s!"symv upper {m} ×{reps} / gemv", tsu, some tv⟩],
     2 * m * m * reps)
 
 /--
-The `syrk`, `trsm` and `trmm` benchmarks for `m × m` matrices: `syrk` and `syrkT` on the lower
-triangle, `trsm`, `trsmT`, `trmm` and `trmmT` on the lower triangle and `trsmRight`, `trsmRightT`,
-`trmmRight` and `trmmRightT` on the upper one, with a non-unit diagonal. Each makes about
-`m * m * m` floating-point operations per call. As for `gemm`, each call copies the shared
+The `syrk`, `trsm`, `trmm` and `symm` benchmarks for `m × m` matrices: `syrk` and `syrkT` on the
+lower triangle, `trsm`, `trsmT`, `trmm`, `trmmT` and `symm` on the lower triangle and `trsmRight`,
+`trsmRightT`, `trmmRight`, `trmmRightT` and `symmRight` on the upper one, with a non-unit diagonal.
+Each makes about `m * m * m` floating-point operations per call, and `2 * m * m * m` for `symm` and
+`symmRight`. As for `gemm`, each call copies the shared
 `C` or `B` first.
 -/
 def level3Rows (rounds m : Nat) : IO (List Row × Nat) := do
@@ -382,6 +395,9 @@ def level3Rows (rounds m : Nat) : IO (List Row × Nat) := do
   let tmT ← time rounds m fun q => (BLAS.Float64.Mat.trmmT .lower .nonUnit (α q) T C).data[0]!
   let tmrT ← time rounds m fun q =>
     (BLAS.Float64.Mat.trmmRightT .upper .nonUnit (α q) T C).data[0]!
+  let tsm ← time rounds m fun q => (BLAS.Float64.Mat.symm .lower (α q) T A 0.5 C).data[0]!
+  let tsmr ← time rounds m fun q =>
+    (BLAS.Float64.Mat.symmRight .upper (α q) T A 0.5 C).data[0]!
   return ([⟨s!"syrk lower {m}", ts, none⟩, ⟨s!"syrkT lower {m}", tt, none⟩,
     ⟨s!"trsm lower {m}", tl, none⟩, ⟨s!"trsmRight upper {m}", tr, none⟩,
     ⟨s!"trsmT lower {m} / trsm", tlT, some tl⟩,
@@ -389,11 +405,13 @@ def level3Rows (rounds m : Nat) : IO (List Row × Nat) := do
     ⟨s!"trmm lower {m} / trsm", tm, some tl⟩,
     ⟨s!"trmmRight upper {m} / trsmRight", tmr, some tr⟩,
     ⟨s!"trmmT lower {m} / trsm", tmT, some tl⟩,
-    ⟨s!"trmmRightT upper {m} / trsmRight", tmrT, some tr⟩], m * m * m)
+    ⟨s!"trmmRightT upper {m} / trsmRight", tmrT, some tr⟩,
+    ⟨s!"symm lower {m}, 2 m³ operations", tsm, none⟩,
+    ⟨s!"symmRight upper {m}, 2 m³ operations", tsmr, none⟩], m * m * m)
 
 /--
-All the benchmarks: Level 1, Level 2, `gemm`, and `syrk`, `trsm` and `trmm`, each with its floating-point
-operations.
+All the benchmarks: Level 1, Level 2, `gemm`, and `syrk`, `trsm`, `trmm` and `symm`, each with its
+floating-point operations.
 -/
 public def all (rounds n : Nat) :
     IO (List Row × List (List Row × Nat) × List (List Row × Nat) × List (List Row × Nat)) := do
