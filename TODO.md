@@ -20,6 +20,12 @@ Changes that would reorder them, such as partial sums in `dot`, `asum` and `nrm2
 - [ ] Parallel `gemm` over blocks of columns of `C`, with `Task`. Each column is independent, so
   the result stays the same to the bit. OpenBLAS on 4 threads is 10–18× ahead.
 
+## Transposed `gemm`
+
+- [ ] `gemmTN`, `gemmTT`: compute two columns of `C` per pass over four columns of `A`, so that
+  each pass reads `A` once for two columns of `B`. They run at about 7.5 GFLOP/s at 256–1024, half
+  of `gemm`, since each column of `C` reads all of `A`. Each sum keeps its order. Not measured yet.
+
 ## `syrk`, `syrkT`, `trsm` and `trsmRight` (6.6–9.3×, 8–11×, 2.2–4.5× and 3–8× behind at 256–1024)
 
 - [x] `syrkT`: compute four elements of a column at a time, with the sums of `gemvT`. About 2×.

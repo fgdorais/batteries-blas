@@ -10,7 +10,8 @@ meta import BLAS
 meta import BLASTest.Util
 
 /-!
-Tests for `gemm`, `syrk`, `syrkT`, `trsm` and `trsmRight` on `Float32`.
+Tests for `gemm`, `gemmTN`, `gemmNT`, `gemmTT`, `syrk`, `syrkT`, `trsm` and `trsmRight` on
+`Float32`.
 -/
 
 open BLAS.Float32
@@ -192,6 +193,137 @@ def gemmLdInPlace (m : Nat) : Bool :=
   BLASTest.addr (Mat.gemm 1 (mat m m 1) (mat m m 2) 1 C).data == p
 
 #guard gemmLdInPlace 8
+
+/-! ## Transposed `gemm` -/
+
+/--
+The loops of the reference BLAS for `gemm` on an `Array`, for an `m × n` matrix `C` with the
+elements `c`, column after column, and `op(A)[i, l] = a i l`, `op(B)[l, j] = b l j`: the loops of
+`transa = 'T'` when `ta`, and of `transa = 'N'` otherwise.
+-/
+def gemmRef (m n k : Nat) (ta : Bool) (a b : Nat → Nat → Float32) (α β : Float32)
+    (c : List Float32) : List Float32 :=
+  Id.run do
+  let mut c := c.toArray
+  if m == 0 || n == 0 || ((α == 0 || k == 0) && β == 1) then return c.toList
+  if α == 0 then
+    for j in List.range n do
+      for i in List.range m do
+        c := c.set! (i + m * j) (if β == 0 then 0 else β * c[i + m * j]!)
+    return c.toList
+  for j in List.range n do
+    if ta then
+      for i in List.range m do
+        let mut t : Float32 := 0
+        for l in List.range k do
+          t := t + a i l * b l j
+        c := c.set! (i + m * j) (if β == 0 then α * t else α * t + β * c[i + m * j]!)
+    else
+      if β == 0 then
+        for i in List.range m do c := c.set! (i + m * j) 0
+      else if β != 1 then
+        for i in List.range m do c := c.set! (i + m * j) (β * c[i + m * j]!)
+      for l in List.range k do
+        let t := α * b l j
+        for i in List.range m do
+          c := c.set! (i + m * j) (c[i + m * j]! + t * a i l)
+  return c.toList
+
+/-- The bits of the elements of `A`, column after column, to compare `-0` and `NaN` too. -/
+def bits (A : Mat m n) := A.toList.map Float32.toBits
+
+/-- The bits of the elements of a list. -/
+def listBits (l : List Float32) := l.map Float32.toBits
+
+/--
+Whether `gemmTN`, `gemmNT` and `gemmTT` match the reference loops to the bit, on packed operands
+and on operands with offsets and leading dimensions, and leave the rest of `C`'s array unchanged.
+-/
+def gemmTMatches (m n k : Nat) (α β : Float32) : Bool :=
+  let get {p q} (A : Mat p q) (i j : Nat) : Float32 :=
+    if h : i < p ∧ j < q then A[(i, j)] else 0
+  let An := mat m k 1
+  let At := mat k m 1
+  let Bn := mat k n 2
+  let Bt := mat n k 2
+  let C := mat m n 3
+  let c := C.toList
+  let rTN := listBits (gemmRef m n k true (fun i l => get At l i) (fun l j => get Bn l j) α β c)
+  let rNT := listBits (gemmRef m n k false (fun i l => get An i l) (fun l j => get Bt j l) α β c)
+  let rTT := listBits (gemmRef m n k true (fun i l => get At l i) (fun l j => get Bt j l) α β c)
+  let Ald := matLd m k 3 (m + 2) 1
+  let Atld := matLd k m 3 (k + 2) 1
+  let Bld := matLd k n 1 (k + 1) 2
+  let Btld := matLd n k 1 (n + 1) 2
+  let Cld := matLd m n 4 (m + 3) 3
+  let D₁ := Mat.gemmTN α Atld Bld β Cld
+  let D₂ := Mat.gemmNT α Ald Btld β Cld
+  let D₃ := Mat.gemmTT α Atld Btld β Cld
+  bits (Mat.gemmTN α At Bn β C) == rTN && bits (Mat.gemmNT α An Bt β C) == rNT &&
+    bits (Mat.gemmTT α At Bt β C) == rTT && bits D₁ == rTN && bits D₂ == rNT && bits D₃ == rTT &&
+    outside D₁ == outside Cld && outside D₂ == outside Cld && outside D₃ == outside Cld &&
+    D₁.data.size == Cld.data.size && D₂.data.size == Cld.data.size &&
+    D₃.data.size == Cld.data.size
+
+#guard gemmTMatches 5 4 3 1.5 0.5
+#guard gemmTMatches 1 1 1 2 3
+#guard gemmTMatches 17 9 13 (-0.25) 2
+#guard gemmTMatches 32 33 31 1 1
+#guard gemmTMatches 63 7 130 1 1
+#guard gemmTMatches 257 3 129 0.5 (-1)
+
+-- Empty shapes, and the special cases of `α` and `β`.
+#guard gemmTMatches 0 3 2 1 1
+#guard gemmTMatches 3 0 2 1 1
+#guard gemmTMatches 3 2 0 1 2
+#guard gemmTMatches 3 2 0 1 1
+#guard gemmTMatches 5 4 3 0 0.5
+#guard gemmTMatches 5 4 3 1.5 0
+#guard gemmTMatches 5 4 3 0 0
+#guard gemmTMatches 5 4 3 0 1
+
+-- `[[1, 2], [3, 4]]ᵀ * [[5, 6], [7, 8]] = [[26, 30], [38, 44]]`, in column-major order, and the
+-- other two forms.
+#guard
+  let A : Mat 2 2 := Mat.ofPMat ⟨.ofList [1, 3, 2, 4], by decide⟩
+  let B : Mat 2 2 := Mat.ofPMat ⟨.ofList [5, 7, 6, 8], by decide⟩
+  let C : Mat 2 2 := Mat.ofPMat ⟨.ofList [1, 1, 1, 1], by decide⟩
+  (Mat.gemmTN 1 A B 0 C).toList == [26, 38, 30, 44] &&
+    (Mat.gemmNT 1 A B 0 C).toList == [17, 39, 23, 53] &&
+    (Mat.gemmTT 1 A B 0 C).toList == [23, 34, 31, 46] &&
+    (Mat.gemmTN 2 A B 1 C).toList == [53, 77, 61, 89]
+
+-- `Mat.transpose` copies the transpose.
+#guard (matLd 3 4 5 7 1).transpose.toList ==
+  (List.range 3).flatMap fun i => (List.range 4).map fun j => (mat 3 4 1)[(i, j)]?.getD 0
+
+-- `gemmTN` and `gemmTT` leave `C` unchanged when `k = 0` and `β = 1`, even a `-0`.
+#guard
+  let C : Mat 1 1 := .ofFn fun _ _ => -0
+  (Mat.gemmTN 2 (mat 0 1) (mat 0 1) 1 C)[(0, 0)].toBits == (-0 : Float32).toBits &&
+    (Mat.gemmTT 2 (mat 0 1) (mat 1 0) 1 C)[(0, 0)].toBits == (-0 : Float32).toBits
+
+-- `β = 0` sets `C` to `0` without reading it, and `α = 0` doesn't read `A` or `B`.
+#guard
+  let nan : Float32 := 0 / 0
+  let C : Mat 2 2 := .ofFn fun _ _ => nan
+  let A : Mat 2 2 := .ofFn fun _ _ => nan
+  (Mat.gemmTN 0 A A 0 C)[(0, 1)] == 0 && (Mat.gemmNT 0 A A 0 C)[(0, 1)] == 0 &&
+    (Mat.gemmTT 0 A A 0 C)[(0, 1)] == 0 && (Mat.gemmTN 0 A A 2 (mat 2 2))[(1, 1)] ==
+      (2 : Float32) * (mat 2 2)[(1, 1)] &&
+    (Mat.gemmTN 1 (mat 2 2) (mat 2 2) 0 C)[(0, 1)] == (mat 2 2)[(0, 0)] * (mat 2 2)[(0, 1)] +
+      (mat 2 2)[(1, 0)] * (mat 2 2)[(1, 1)]
+
+/-- Whether `gemmTN`, `gemmNT` and `gemmTT` update an unshared `C` in place. -/
+def gemmTInPlace (m : Nat) : Bool :=
+  let (p, C) := withAddr (mat m m 3)
+  let (q, C') := withAddr (matLd m m 2 (m + 1) 3)
+  let (r, C'') := withAddr (mat m m 4)
+  BLASTest.addr (Mat.gemmTN 1 (mat m m 1) (mat m m 2) 1 C).data == p &&
+    BLASTest.addr (Mat.gemmTT 1 (mat m m 1) (mat m m 2) 1 C').data == q &&
+    BLASTest.addr (Mat.gemmNT 1 (mat m m 1) (mat m m 2) 1 C'').data == r
+
+#guard gemmTInPlace 8
 
 /-! ## `syrk` and `syrkT` -/
 
