@@ -259,6 +259,18 @@ error: blas%: no single BLAS routine computes this factor; write it with a separ
 example (A : Mat 2 2) (x z y : Vec 2) : Vec 2 := blas%(y := A * (x - z))
 
 /--
+error: blas%: no `do` or nested `blas%` in a statement; bind the value with `let` first
+-/
+#guard_msgs in
+example (A : Mat 2 2) (x y : Vec 2) : Vec 2 := blas%(y := A * blas%(x := A * x) + y)
+
+/--
+error: blas%: no `do` or nested `blas%` in a statement; bind the value with `let` first
+-/
+#guard_msgs in
+example (x y : Vec 2) : Vec 2 := blas%(y := (Id.run do return (2 : Float32)) • x + y)
+
+/--
 error: blas%: `y` occurs twice; combine its scalars
 -/
 #guard_msgs in

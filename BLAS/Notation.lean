@@ -27,7 +27,8 @@ blas% do
 
 In a `do` block, `blas% do …` reassigns the mutable variables that are its targets, in order, and
 `blas% y := e` is a block of one statement. As a term, `blas% do …` is the new value of the last
-target, and `blas%(y := e)`, a block of one statement, is the routine call itself.
+target, and `blas%(y := e)`, a block of one statement, is the routine call itself. A block is the
+only `do` of its expression: its statements can't contain a `do` block or another `blas%`.
 
 | Update                       | Expansion                     | Routine                    |
 |------------------------------|-------------------------------|----------------------------|
@@ -230,8 +231,19 @@ syntax (name := blasAddAssign) ident " += " blasSum : blasStmt
 /-- `y -= e` is `y := y - e`. -/
 syntax (name := blasSubAssign) ident " -= " blasSum : blasStmt
 
-/-- The target of a statement, and its routine call. -/
+/-- The kinds of the terms that run a block: `do`, and the `blas%` blocks and terms. -/
+private meta def blockKinds : List SyntaxNodeKind :=
+  [``Lean.Parser.Term.do, `BLAS.Notation.blasBlock, `BLAS.Notation.blasTerm]
+
+/--
+The target of a statement, and its routine call. A statement has no `do` block in its operands or
+scalars, and no `blas%` in them, so that a block is the only `do` of its expression and each
+statement is one routine.
+-/
 private meta def statement (s : TSyntax `blasStmt) : MacroM (Ident × Term) := do
+  if let some t := s.raw.find? fun t => blockKinds.contains t.getKind then
+    Macro.throwErrorAt t "blas%: no `do` or nested `blas%` in a statement; \
+      bind the value with `let` first"
   match s with
   | `(blasStmt| $y:ident := $e) => return (y, ← expand y e false false)
   | `(blasStmt| $y:ident += $e) => return (y, ← expand y e true false)
