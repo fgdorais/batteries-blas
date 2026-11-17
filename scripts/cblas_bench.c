@@ -46,6 +46,8 @@ typedef double real;
 /* The routines, named after their double-precision versions. */
 static real (*ddot)(int, const real *, int, const real *, int);
 static void (*daxpy)(int, real, const real *, int, real *, int);
+/* Not in the reference BLAS: `NULL` when the library doesn't have it. */
+static void (*daxpby)(int, real, const real *, int, real, real *, int);
 static void (*dscal)(int, real, real *, int);
 static void (*dcopy)(int, const real *, int, real *, int);
 static real (*dasum)(int, const real *, int);
@@ -119,6 +121,12 @@ static double b_axpy(void *e) {
   L1 *v = e;
   dcopy(v->n, v->x, v->inc, v->z, v->inc);
   for (int k = 0; k < reps; k++) daxpy(v->n, 0.5, v->x, v->inc, v->z, v->inc);
+  return v->z[0];
+}
+static double b_axpby(void *e) {
+  L1 *v = e;
+  dcopy(v->n, v->x, v->inc, v->z, v->inc);
+  for (int k = 0; k < reps; k++) daxpby(v->n, 0.5, v->x, v->inc, 0.5, v->z, v->inc);
   return v->z[0];
 }
 static double b_scal(void *e) {
@@ -253,6 +261,7 @@ int main(int argc, char **argv) {
   if (argc > 3) rounds = atoi(argv[3]);
   ddot = sym(lib, CBLAS("dot"));
   daxpy = sym(lib, CBLAS("axpy"));
+  daxpby = dlsym(lib, CBLAS("axpby"));
   dscal = sym(lib, CBLAS("scal"));
   dcopy = sym(lib, CBLAS("copy"));
   dasum = sym(lib, CBLAS("asum"));
@@ -270,6 +279,10 @@ int main(int argc, char **argv) {
   L1 v = {n, 1, vec(n), vec(n), vec(n)};
   snprintf(name, sizeof name, "axpy ×%d", reps);
   time_it(name, b_axpy, &v);
+  if (daxpby) {
+    snprintf(name, sizeof name, "axpby ×%d / axpy", reps);
+    time_it(name, b_axpby, &v);
+  }
   snprintf(name, sizeof name, "scal ×%d", reps);
   time_it(name, b_scal, &v);
   snprintf(name, sizeof name, "copy ×%d", reps);
