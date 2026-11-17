@@ -49,15 +49,16 @@ public def main (args : List String) : IO Unit := do
         | none => ("—", "—")
       IO.println s!"| {r.name} | {fmt r.time} | {c} | {ratio} |"
     IO.println "\nLevel 2 on square matrices, in GFLOP/s.\n"
-    IO.println "| Size | gemv | gemvT | ger | gemv, stride 2 | trsv, lower | trsv, upper |"
-    IO.println "|--:|--:|--:|--:|--:|--:|--:|"
+    IO.println "| Size | gemv | gemvT | ger | gemv, stride 2 | trsv, lower | trsv, upper \
+      | trsvT, lower | trsvT, upper |"
+    IO.println "|--:|--:|--:|--:|--:|--:|--:|--:|--:|"
     for (rs, flops) in level2, m in level2Sizes do
       let g (t : Float) := fmt (flops.toFloat / (t * 1e6))
       match rs with
-      | [v, t, r, v2, tl, tu] =>
+      | [v, t, r, v2, tl, tu, tlT, tuT] =>
         IO.println
           s!"| {m} | {g v.time} | {g t.time} | {g r.time} | {g v2.time} | {g (2 * tl.time)} \
-            | {g (2 * tu.time)} |"
+            | {g (2 * tu.time)} | {g (2 * tlT.time)} | {g (2 * tuT.time)} |"
       | _ => pure ()
     IO.println "\n`gemm` of square matrices, in GFLOP/s.\n"
     IO.println
@@ -71,11 +72,13 @@ public def main (args : List String) : IO Unit := do
           | {g tt.time} | {(r.ref.map g).getD "—"} |"
       | _ => pure ()
     IO.println "\n`syrk` and `trsm` of square matrices, in GFLOP/s.\n"
-    IO.println "| Size | syrk, lower | syrkT, lower | trsm, lower | trsmRight, upper |"
-    IO.println "|--:|--:|--:|--:|--:|"
+    IO.println "| Size | syrk, lower | syrkT, lower | trsm, lower | trsmRight, upper | trsmT, lower \
+      | trsmRightT, upper |"
+    IO.println "|--:|--:|--:|--:|--:|--:|--:|"
     for (rs, flops) in level3, m in level3Sizes do
       let g (t : Float) := fmt (flops.toFloat / (t * 1e6))
       match rs with
-      | [s, t, l, r] =>
-        IO.println s!"| {m} | {g s.time} | {g t.time} | {g l.time} | {g r.time} |"
+      | [s, t, l, r, lT, rT] =>
+        IO.println s!"| {m} | {g s.time} | {g t.time} | {g l.time} | {g r.time} | {g lT.time} \
+          | {g rT.time} |"
       | _ => pure ()

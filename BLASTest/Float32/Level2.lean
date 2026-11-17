@@ -10,7 +10,7 @@ meta import BLAS
 meta import BLASTest.Util
 
 /-!
-Tests for `gemv`, `gemvT`, `ger` and `trsv` on `Float32`.
+Tests for `gemv`, `gemvT`, `ger`, `trsv` and `trsvT` on `Float32`.
 -/
 
 open BLAS.Float32
@@ -253,3 +253,73 @@ def trsvInPlace (n : Nat) : Bool :=
     BLASTest.addr (Mat.trsv .upper .unit (triMat n 0 0 .upper) x').data == q
 
 #guard trsvInPlace 8
+
+/-! ## `trsvT` -/
+
+-- `[[2, 0], [1, 1]]ᵀ * y = [5, 1]` gives `y = [2, 1]`; `[[2, 1], [0, 1]]ᵀ * y = [4, 3]` gives
+-- `[2, 1]`.
+#guard
+  let A : Mat 2 2 := .ofPMat ⟨.ofList [2, 1, 1, 1], by decide⟩
+  (Mat.trsvT .lower .nonUnit A (.ofList [5, 1])).toList == [2, 1] &&
+    (Mat.trsvT .upper .nonUnit A (.ofList [4, 3])).toList == [2, 1] &&
+    (Mat.trsvT .lower .unit A (.ofList [5, 1])).toList == [4, 1] &&
+    (Mat.trsvT .upper .unit A (.ofList [4, 3])).toList == [4, -1]
+
+/-- The loops of the reference BLAS for `trsv` with `TRANS = 'T'`, on an `Array`. -/
+def trsvTRef (uplo : Uplo) (d : Diag) (A : Mat n n) (x : Vec n) : List Float32 := Id.run do
+  let mut y := x.toList.toArray
+  let a (i j : Nat) := A[(i, j)]?.getD 0
+  let cols := match uplo with
+    | .upper => List.range n
+    | .lower => (List.range n).reverse
+  for j in cols do
+    let mut t := y[j]!
+    let rows := match uplo with
+      | .upper => List.range j
+      | .lower => ((List.range n).filter (j < ·)).reverse
+    for i in rows do
+      t := t - a i j * y[i]!
+    if d == .nonUnit then t := t / a j j
+    y := y.set! j t
+  return y.toList
+
+/--
+Whether `trsvT` matches the reference loops, on packed operands and on operands with offsets,
+strides and leading dimensions, doesn't read the other triangle (nor the diagonal when it is unit),
+and leaves the rest of `x`'s array unchanged.
+-/
+def trsvTMatches (n : Nat) (uplo : Uplo) (d : Diag) : Bool :=
+  let A := triMat n 1 0 uplo
+  let ok₁ := (Mat.trsvT uplo d A (vec n 2)).toList == trsvTRef uplo d A (vec n 2)
+  let nan : Float32 := 0 / 0
+  let B := triMat n 1 nan uplo
+  let B : Mat n n := match d with
+    | .nonUnit => B
+    | .unit => .ofFn fun i j => if i.val = j.val then nan else B[(i.val, j.val)]
+  let B' := (Mat.ofLd? (Mat.ofFn (m := n + 3) (n := n) fun i j =>
+    if h : i.val < n then B[(i.val, j.val)]'⟨h, j.isLt⟩ else mark).data 0 (n + 3)).getD B
+  let x := vecInc n 2 3 2
+  let y := Mat.trsvT uplo d B' x
+  ok₁ && y.toList == trsvTRef uplo d A (vec n 2) && marks y.data == marks x.data
+
+#guard [Uplo.lower, .upper].all fun u => [Diag.unit, .nonUnit].all fun d =>
+  trsvTMatches 5 u d && trsvTMatches 1 u d && trsvTMatches 0 u d && trsvTMatches 40 u d &&
+    trsvTMatches 80 u d
+
+/-- The residual `Aᵀ * y - x` of a solve, by `gemvT`: zero up to rounding. -/
+def trsvTResidual (n : Nat) (uplo : Uplo) : Float32 :=
+  let A := triMat n 1 0 uplo
+  let y := Mat.trsvT uplo .nonUnit A (vec n 2)
+  let r := Mat.gemvT 1 A y (-1) (vec n 2)
+  r.toList.foldl (fun s v => max s v.abs) 0
+
+#guard trsvTResidual 50 .lower < 1e-4 && trsvTResidual 50 .upper < 1e-4
+
+/-- Whether `trsvT` updates an unshared `x` in place. -/
+def trsvTInPlace (n : Nat) : Bool :=
+  let (p, x) := withAddr (vecInc n 1 2)
+  let (q, x') := withAddr (vecInc n 1 2 5)
+  BLASTest.addr (Mat.trsvT .lower .nonUnit (triMat n) x).data == p &&
+    BLASTest.addr (Mat.trsvT .upper .unit (triMat n 0 0 .upper) x').data == q
+
+#guard trsvTInPlace 8
