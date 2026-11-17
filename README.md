@@ -7,8 +7,8 @@ Basic Linear Algebra Subprograms written entirely in Lean 4, on the unboxed arra
 The routines come with proved specifications; their speed is measured, not promised.
 
 It has, on `Float64` and `Float32`, the BLAS Level 1 routines on strided vectors, `gemv`, `ger` and
-`trsv`, `trmv` (with their transposed forms), and `gemm`, `syrk` and `trsm` (with theirs) on matrices with
-an offset and a leading dimension, as well as the mixed-precision `dsdot` and `sdsdot`. The
+`trsv`, `trmv` (with their transposed forms), and `gemm`, `syrk`, `trsm` and `trmm` (with theirs) on
+matrices with an offset and a leading dimension, as well as the mixed-precision `dsdot` and `sdsdot`. The
 `Float32` routines are in `BLAS.Float32`, with the same names and specifications as those of
 `BLAS.Float64`, on `Float32Array`.
 
@@ -155,6 +155,10 @@ when its array is not shared, and leave the elements outside the result unchange
 | `trsmRight uplo diag α A B` | `X` with `X * A = α * B`, over `B` | `getElem_trsmRight_upper`, `getElem_trsmRight_lower` |
 | `trsmT uplo diag α A B` | `X` with `Aᵀ * X = α * B`, over `B` | `getElem_trsmT_upper`, `getElem_trsmT_lower` |
 | `trsmRightT uplo diag α A B` | `X` with `X * Aᵀ = α * B`, over `B` | `getElem_trsmRightT_upper`, `getElem_trsmRightT_lower` |
+| `trmm uplo diag α A B` | `α * A * B` for a triangular `A`, over `B` | `getElem_trmm_upper`, `getElem_trmm_lower` |
+| `trmmRight uplo diag α A B` | `α * B * A` for a triangular `A`, over `B` | `getElem_trmmRight_upper`, `getElem_trmmRight_lower` |
+| `trmmT uplo diag α A B` | `α * Aᵀ * B` for a triangular `A`, over `B` | `getElem_trmmT_upper`, `getElem_trmmT_lower` |
+| `trmmRightT uplo diag α A B` | `α * B * Aᵀ` for a triangular `A`, over `B` | `getElem_trmmRightT_upper`, `getElem_trmmRightT_lower` |
 
 As in the reference `dsyrk`, `syrk` and `syrkT` only scale the triangle when `α = 0`, `syrk` skips
 the terms with `A[j, l] = 0`, so that an infinity or a `NaN` in `A` doesn't reach them, and `syrkT`
@@ -168,6 +172,18 @@ each column by dot products, as `trsvT` does, except that for the lower triangle
 from `i + 1`, as in `dtrsm`. `trsmRightT` gives each element the operations of `dtrsm`, which
 divides each solved column by the diagonal, subtracts it from the columns still to solve, and only
 then scales it by `α`: its specification is `α` times the solution of `X * Aᵀ = B`, in that order.
+
+The four `trmm` forms are the cases of the reference `dtrmm`, which has no zero skips: as there,
+they set `B` to `0` without reading `A` or `B` when `α = 0`, and read neither the other triangle nor
+a unit diagonal. `trmm` multiplies each column of `B`, scaled by `α`, by the loops of `trmv`, so
+its specification is that of `trmv` on the scaled column. `trmmT` computes each element as a dot
+product with its column, scaled by `α` at the end; for the upper triangle the terms run up from
+`k = 0`, as in `dtrmm`. `trmmRight` and `trmmRightT` compute one column of `B` at a time: they scale
+it by `α * A[j, j]` (by `α` for a unit diagonal), and add `α * A[k, j] * B[i, k]` (`α * A[j, k]` for
+`trmmRightT`) for the other columns `k` of the triangle, in the order of `dtrmm`. They take the
+columns `j` in an order where the columns they read are still those of `B`, so each element gets
+the operations of `dtrmm` in the same order. As in `dtrmm`, `trmmRightT` skips the scaling when
+its factor is `1`.
 
 `BLAS.Float32.Vec.dsdot x y` is the dot product of two `Float32` vectors, accumulated in `Float64`
 from the products of the elements converted to `Float64`, and `sdsdot sb x y` adds it to `sb` in
