@@ -10,9 +10,9 @@ module
 `blas%` (in `BLAS.Notation`) reads an update such as `y := α • A * x + β • y` and expands it to a
 single call of one of the classes below, such as `MulAdd.run α A x β y`. Each instance of a class
 is one routine of the library, for one kind of operand: `MulAdd` on a matrix and a vector is
-`gemv`, on a transposed matrix and a vector `gemvT`, on two matrices `gemm`, and on transposes `gemmTN`, `gemmNT` and
-`gemmTT`. An update that no instance covers, such as `Aᵀ * x` with the wrong sizes, is a type
-class error at compile time, never a slower combination of routines.
+`gemv`, on a transposed matrix and a vector `gemvT`, on two matrices `gemm`, and on transposes
+`gemmTN`, `gemmNT` and `gemmTT`. An update that no instance covers, such as `Aᵀ * x` with the
+wrong sizes, is a type class error at compile time, never a slower combination of routines.
 
 The classes are independent of the element type. Their instances, with a `simp` lemma for each
 that unfolds it to its routine, are next to the routines' views, in `BLAS.Float64.View` and
@@ -30,8 +30,8 @@ public structure Transpose (α : Type) where
   mat : α
 
 /--
-`MulAdd.run α a x β y` is `α * a * x + β * y`, over `y`, by a single routine: `gemv`, `gemvT`, `gemm`,
-`gemmTN`, `gemmNT` or `gemmTT`, depending on the kinds of `a` and `x`. `blas%` expands
+`MulAdd.run α a x β y` is `α * a * x + β * y`, over `y`, by a single routine: `gemv`, `gemvT`,
+`gemm`, `gemmTN`, `gemmNT` or `gemmTT`, depending on the kinds of `a` and `x`. `blas%` expands
 `y := α • a * x + β • y` to it.
 -/
 public class MulAdd (S : outParam Type) (A X Y : Type) where
