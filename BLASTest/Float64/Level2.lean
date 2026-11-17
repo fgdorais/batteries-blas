@@ -326,6 +326,9 @@ def trsvTInPlace (n : Nat) : Bool :=
 
 /-! ## `trmv` and `trmvT` -/
 
+/-- The elements of `A` divided by `3`, so that the order of the sums changes their roundings. -/
+def thirdsMat (A : Mat n n) : Mat n n := .ofFn fun i j => A[(i.val, j.val)] / 3
+
 -- `A = [[2, 1], [1, 1]]`, read by triangle: `[[2, 0], [1, 1]] * [1, 2] = [2, 3]`,
 -- `[[2, 1], [0, 1]] * [1, 2] = [4, 2]`, and the transposes give `[4, 2]` and `[2, 3]`.
 #guard
@@ -385,10 +388,10 @@ when it is unit), and leaves the rest of `x`'s array unchanged.
 def trmvMatches (t : Bool) (n : Nat) (uplo : Uplo) (d : Diag) : Bool :=
   let f := if t then Mat.trmvT uplo d else Mat.trmv uplo d
   let ref := if t then trmvTRef uplo d else trmvRef uplo d
-  let A := triMat n 1 0 uplo
+  let A := thirdsMat (triMat n 1 0 uplo)
   let ok₁ := (f A (vec n 2)).toList == ref A (vec n 2)
   let nan : Float := 0 / 0
-  let B := triMat n 1 nan uplo
+  let B := thirdsMat (triMat n 1 nan uplo)
   let B : Mat n n := match d with
     | .nonUnit => B
     | .unit => .ofFn fun i j => if i.val = j.val then nan else B[(i.val, j.val)]
