@@ -8,14 +8,14 @@ public meta import Lean.Elab.Term
 public import BLAS.Ops
 
 /-!
-# The `blas!` notation
+# The `blas%` notation
 
-The root module `BLAS` doesn't import this one, because it makes `blas!` a keyword and `ᵀ` a
+The root module `BLAS` doesn't import this one, because it makes `blas%` a keyword and `ᵀ` a
 postfix operator (as Mathlib does for its matrices).
 
-`blas! y := e` updates `y` by a single routine, chosen from the form of `e` and the kinds of its
-operands. In a `do` block it reassigns the mutable variable `y`, and as a term, `blas!(y := e)` is
-the new value of `y`. `blas! y += e` is `blas! y := e + y`.
+`blas% y := e` updates `y` by a single routine, chosen from the form of `e` and the kinds of its
+operands. In a `do` block it reassigns the mutable variable `y`, and as a term, `blas%(y := e)` is
+the new value of `y`. `blas% y += e` is `blas% y := e + y`.
 
 | Update                       | Expansion                     | Routine                    |
 |------------------------------|-------------------------------|----------------------------|
@@ -55,7 +55,7 @@ macro_rules
   | `($A[:, $j]) => `(($A).col $j (by get_elem_tactic))
   | `($A[$i, :]) => `(($A).row $i (by get_elem_tactic))
 
-/-- A summand of the right side of a `blas!` update, with its optional scalar. -/
+/-- A summand of the right side of a `blas%` update, with its optional scalar. -/
 private inductive Summand where
   /-- `α • a * x`. -/
   | prod (c : Option Term) (a x : Term)
@@ -63,7 +63,7 @@ private inductive Summand where
   | plain (c : Option Term) (x : Term)
   deriving Inhabited
 
-/-- The operators that `blas!` doesn't take in an operand, rather than reading them as a term. -/
+/-- The operators that `blas%` doesn't take in an operand, rather than reading them as a term. -/
 private meta def opKinds : List SyntaxNodeKind :=
   [``«term_-_», ``«term-_», ``«term_/_», ``«term_^_», ``«term_+_», ``«term_*_», ``«term_•_»]
 
@@ -78,28 +78,28 @@ private meta partial def summands (e : Term) : Array Term :=
   | `($a + $b) => summands a ++ summands b
   | t => #[t]
 
-/-- Checks that `t` is an operand, not an arithmetic expression that `blas!` doesn't handle. -/
+/-- Checks that `t` is an operand, not an arithmetic expression that `blas%` doesn't handle. -/
 private meta def operand (t : Term) : MacroM Term := do
   let t := unparen t
   if opKinds.contains t.raw.getKind then
-    Macro.throwErrorAt t "blas!: no single BLAS routine computes this operand; \
+    Macro.throwErrorAt t "blas%: no single BLAS routine computes this operand; \
       write it with a separate update first"
   return t
 
-/-- Classifies a summand of the right side of a `blas!` update. -/
+/-- Classifies a summand of the right side of a `blas%` update. -/
 private meta partial def classify (t : Term) : MacroM Summand := do
   match unparen t with
   | `($c • $u) =>
     match ← classify u with
     | .prod none a x => return .prod (some c) a x
     | .plain none x => return .plain (some c) x
-    | _ => Macro.throwErrorAt t "blas!: a summand has at most one scalar"
+    | _ => Macro.throwErrorAt t "blas%: a summand has at most one scalar"
   | `($a * $b) =>
     match ← classify a, ← classify b with
     | .plain c a, .plain none x => return .prod c (← operand a) (← operand x)
     | .plain _ _, .plain (some _) _ =>
-      Macro.throwErrorAt t "blas!: write the scalar first, as in `α • A * x`"
-    | _, _ => Macro.throwErrorAt t "blas!: no single BLAS routine computes a product of three \
+      Macro.throwErrorAt t "blas%: write the scalar first, as in `α • A * x`"
+    | _, _ => Macro.throwErrorAt t "blas%: no single BLAS routine computes a product of three \
         factors"
   | u => return .plain none (← operand u)
 
@@ -117,12 +117,12 @@ private meta def expand (y : Ident) (e : Term) : MacroM Term := do
     | .plain c x =>
       if isTarget y x then
         if target.isSome then
-          Macro.throwErrorAt t s!"blas!: `{y.getId}` occurs twice; combine its scalars"
+          Macro.throwErrorAt t s!"blas%: `{y.getId}` occurs twice; combine its scalars"
         target := some c
       else others := others.push s
     | .prod .. => others := others.push s
   let fail {α} : MacroM α := Macro.throwErrorAt e
-    s!"blas!: no single BLAS routine computes this update of `{y.getId}`"
+    s!"blas%: no single BLAS routine computes this update of `{y.getId}`"
   match others, target with
   -- `y := α • A * x + β • y`, or the solves.
   | #[.prod c a x], tgt =>
@@ -150,24 +150,24 @@ private meta def expand (y : Ident) (e : Term) : MacroM Term := do
   | #[], some (some c) => `(BLAS.Scal.run $c $y)
   | _, _ => fail
 
-/-- `blas!(y := e)` is the new value of `y` after the update `y := e` by a single routine. -/
-scoped syntax (name := blasTerm) "blas!(" ident " := " term ")" : term
+/-- `blas%(y := e)` is the new value of `y` after the update `y := e` by a single routine. -/
+scoped syntax (name := blasTerm) "blas%(" ident " := " term ")" : term
 
-/-- `blas!(y += e)` is `blas!(y := e + y)`. -/
-scoped syntax (name := blasAddTerm) "blas!(" ident " += " term ")" : term
+/-- `blas%(y += e)` is `blas%(y := e + y)`. -/
+scoped syntax (name := blasAddTerm) "blas%(" ident " += " term ")" : term
 
-/-- `blas! y := e` updates the mutable variable `y` by a single routine. -/
-scoped syntax (name := blasDo) "blas! " ident " := " term : doElem
+/-- `blas% y := e` updates the mutable variable `y` by a single routine. -/
+scoped syntax (name := blasDo) "blas% " ident " := " term : doElem
 
-/-- `blas! y += e` is `blas! y := e + y`. -/
-scoped syntax (name := blasAddDo) "blas! " ident " += " term : doElem
-
-macro_rules
-  | `(blas!($y := $e)) => expand y e
-  | `(blas!($y += $e)) => do expand y (← `($e + $y))
+/-- `blas% y += e` is `blas% y := e + y`. -/
+scoped syntax (name := blasAddDo) "blas% " ident " += " term : doElem
 
 macro_rules
-  | `(doElem| blas! $y:ident := $e) => `(doElem| $y:ident := blas!($y := $e))
-  | `(doElem| blas! $y:ident += $e) => `(doElem| $y:ident := blas!($y += $e))
+  | `(blas%($y := $e)) => expand y e
+  | `(blas%($y += $e)) => do expand y (← `($e + $y))
+
+macro_rules
+  | `(doElem| blas% $y:ident := $e) => `(doElem| $y:ident := blas%($y := $e))
+  | `(doElem| blas% $y:ident += $e) => `(doElem| $y:ident := blas%($y += $e))
 
 end BLAS.Notation

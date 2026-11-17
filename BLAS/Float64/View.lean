@@ -21,9 +21,9 @@ with no copy.
 
 ## Instances
 
-The instances of the classes of `BLAS.Ops` on vectors, matrices and views, which `blas!` expands
+The instances of the classes of `BLAS.Ops` on vectors, matrices and views, which `blas%` expands
 to, each with a `simp` lemma that unfolds it to its routine. So the specifications of the routines,
-such as `getElem_gemv`, apply to the expansions of `blas!` with no new proofs.
+such as `getElem_gemv`, apply to the expansions of `blas%` with no new proofs.
 -/
 
 open ScalarArray
