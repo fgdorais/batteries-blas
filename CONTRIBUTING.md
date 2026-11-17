@@ -30,7 +30,9 @@ Text that depends on the precision, such as the constants of `nrm2` and test tol
 the `SPECIFIC` table of the script, which fails if such text is left over. `Float` becomes
 `Float32`, two columns longer, so keep template lines that mention `Float` short enough for the
 generated line to fit. Anything that doesn't name an element type, such as the `USize` index
-lemmas, goes in `BLAS/Internal.lean` instead.
+lemmas, goes in `BLAS/Internal.lean` instead. Routines that mix the two precisions, such as `dsdot`
+and `sdsdot`, are hand-written in `BLAS/Mixed.lean`, with their tests in `BLASTest/Mixed.lean`;
+don't put them under `BLAS/Float32/`, whose untemplated files the script removes.
 
 ## Files
 

@@ -8,6 +8,7 @@ public import ScalarArray
 public import ScalarArray.Notation
 public import BLAS.Float64
 public import BLAS.Float32
+public import BLAS.Mixed
 
 /-!
 # BLAS

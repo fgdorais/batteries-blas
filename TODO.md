@@ -39,6 +39,11 @@ Changes that would reorder them, such as partial sums in `dot`, `asum` and `nrm2
 - [ ] `trsmRight`: subtract four solved columns per pass over the rows of column `j`, as `gemv` adds
   four columns, so that each element keeps its order of operations. It is 3× behind at 256 and 8×
   at 1024, where `trsm` is 2.2× and 4.5×. Not measured yet.
+- [ ] `trsmT`: solve four columns of `B` at a time, as `trsm` does. It is about 3× slower than
+  `trsm` at 256–1024 (3.1 GFLOP/s), solving one column at a time by dot products.
+- [ ] `trsmRightT`: fuse the solve of a column with the subtractions from the columns still to
+  solve, as `trsmRight` does. It is 6× slower than `trsmRight` at 256, 4.2× at 512 and 2× at 1024
+  (1.6–3.4 GFLOP/s), since each element reads a row of `A` with a stride.
 - [ ] `trsm`, `trsmRight`: update the rest of `B` by the `gemm` kernel after each block of solved
   rows or columns. This changes the order of the updates of an element only if the blocks reorder
   its terms, so it needs care to stay exact.
@@ -52,6 +57,11 @@ Changes that would reorder them, such as partial sums in `dot`, `asum` and `nrm2
   them to core, for `Float` and `Float32`.
 
 ## Level 2 (0.9–1.3× at 1024 and 2048, 1.2–1.8× at 256)
+
+- [ ] `trsvT`: compute four elements at a time, as `gemvT` computes four dot products, with each
+  element's terms in their order: the next three elements depend only on the terms solved so far,
+  except for a 4 × 4 triangle at the end. It runs at 3.2–4.5 GFLOP/s at 256–2048, about half of
+  `trsv`. Not measured yet.
 
 - [ ] `trsv`: update the rest of `x` four columns at a time after each block of four solved
   elements, as `gemv` does. Each element keeps its order of operations. Not measured yet.
