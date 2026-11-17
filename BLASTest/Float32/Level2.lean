@@ -10,7 +10,7 @@ meta import BLAS
 meta import BLASTest.Util
 
 /-!
-Tests for `gemv`, `gemvT`, `ger`, `trsv`, `trsvT`, `trmv` and `trmvT` on `Float32`.
+Tests for `gemv`, `gemvT`, `ger`, `trsv`, `trsvT`, `trmv`, `trmvT` and `symv` on `Float32`.
 -/
 
 open BLAS.Float32
@@ -424,3 +424,86 @@ def trmvInPlace (n : Nat) : Bool :=
     BLASTest.addr (Mat.trmvT .upper .unit (triMat n 0 0 .upper) x').data == q
 
 #guard trmvInPlace 8
+
+/-! ## `symv` -/
+
+-- `A = [[2, 1], [1, 3]]`, stored in either triangle: `A * [1, 2] = [4, 7]`.
+#guard
+  let nan : Float32 := 0 / 0
+  let U : Mat 2 2 := .ofPMat ⟨.ofList [2, nan, 1, 3], by decide⟩
+  let L : Mat 2 2 := .ofPMat ⟨.ofList [2, 1, nan, 3], by decide⟩
+  let x : Vec 2 := .ofList [1, 2]
+  let y : Vec 2 := .ofList [10, 20]
+  (Mat.symv .upper 1 U x 0 y).toList == [4, 7] && (Mat.symv .lower 1 L x 0 y).toList == [4, 7] &&
+    (Mat.symv .upper 2 U x 1 y).toList == [18, 34] &&
+    (Mat.symv .lower 0 L x 0.5 y).toList == [5, 10]
+
+/-- The loops of the reference BLAS for `symv`, on `Array`s. -/
+def symvRef (uplo : Uplo) (α : Float32) (A : Mat n n) (x : Vec n) (β : Float32) (y : Vec n) :
+    List Float32 := Id.run do
+  let mut b := y.toList.toArray
+  let xs := x.toList.toArray
+  if n == 0 || (α == 0 && β == 1) then return b.toList
+  if β != 1 then
+    for i in List.range n do b := b.set! i (if β == 0 then 0 else β * b[i]!)
+  if α == 0 then return b.toList
+  let a (i j : Nat) := A[(i, j)]?.getD 0
+  for j in List.range n do
+    let t₁ := α * xs[j]!
+    let mut t₂ : Float32 := 0
+    match uplo with
+    | .upper =>
+      for i in List.range j do
+        b := b.set! i (b[i]! + t₁ * a i j)
+        t₂ := t₂ + a i j * xs[i]!
+      b := b.set! j (b[j]! + t₁ * a j j + α * t₂)
+    | .lower =>
+      b := b.set! j (b[j]! + t₁ * a j j)
+      for i in (List.range n).filter (j < ·) do
+        b := b.set! i (b[i]! + t₁ * a i j)
+        t₂ := t₂ + a i j * xs[i]!
+      b := b.set! j (b[j]! + α * t₂)
+  return b.toList
+
+/-- The bits of a list of floats. -/
+def floatBits (l : List Float32) := l.map Float32.toBits
+
+/--
+Whether `symv` matches the reference loops bit for bit, on packed operands and on operands with
+offsets, strides and leading dimensions, doesn't read the other triangle, and leaves the rest of
+`y`'s array unchanged.
+-/
+def symvMatches (n : Nat) (uplo : Uplo) (α β : Float32) : Bool :=
+  let A := thirdsMat (triMat n 1 0 uplo)
+  let r := symvRef uplo α A (vec n 2) β (vec n 5)
+  let ok₁ := floatBits (Mat.symv uplo α A (vec n 2) β (vec n 5)).toList == floatBits r
+  let B := thirdsMat (triMat n 1 (0 / 0) uplo)
+  let B' := (Mat.ofLd? (Mat.ofFn (m := n + 3) (n := n) fun i j =>
+    if h : i.val < n then B[(i.val, j.val)]'⟨h, j.isLt⟩ else mark).data 0 (n + 3)).getD B
+  let y := vecInc n 1 2 5
+  let z := Mat.symv uplo α B' (vecInc n 2 3 2) β y
+  ok₁ && floatBits z.toList == floatBits r && marks z.data == marks y.data
+
+#guard [Uplo.lower, .upper].all fun u =>
+  symvMatches 5 u 1.5 0.5 && symvMatches 1 u 2 0 && symvMatches 0 u 1 1 &&
+    symvMatches 40 u (-0.25) 1 && symvMatches 300 u (1 / 7) (-2) && symvMatches 17 u 0 0.5 &&
+    symvMatches 17 u 0 0 && symvMatches 17 u 1 0
+
+/-- `symv` on the two triangles of a symmetric matrix agrees with `gemv`, up to rounding. -/
+def symvResidual (n : Nat) : Float32 :=
+  let S : Mat n n := .ofFn fun i j => ((i.val * j.val + i.val + j.val) % 7).toFloat32 / 3
+  let g := Mat.gemv 1.5 S (vec n 2) 0.5 (vec n 5)
+  let e := ((Mat.symv .upper 1.5 S (vec n 2) 0.5 (vec n 5)).toList.zip g.toList) ++
+    ((Mat.symv .lower 1.5 S (vec n 2) 0.5 (vec n 5)).toList.zip g.toList)
+  e.foldl (fun s (u, v) => max s (u - v).abs) 0
+
+#guard symvResidual 50 < 1e-4
+
+/-- Whether `symv` updates an unshared `y` in place. -/
+def symvInPlace (n : Nat) : Bool :=
+  let (p, y) := withAddr (vecInc n 1 2)
+  let (q, y') := withAddr (vecInc n 1 2 5)
+  BLASTest.addr (Mat.symv .lower 2 (triMat n) (vec n) 0.5 y).data == p &&
+    BLASTest.addr (Mat.symv .upper 2 (triMat n 0 0 .upper) (vec n) 0 y').data == q
+
+#guard symvInPlace 8

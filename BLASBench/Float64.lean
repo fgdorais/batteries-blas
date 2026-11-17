@@ -339,6 +339,16 @@ def level2Rows (rounds m : Nat) : IO (List Row × Nat) := do
     for _ in [0:reps] do
       y := BLAS.Float64.Mat.trmvT .upper .nonUnit T y
     return y.data[0]!
+  let tsl ← time rounds m fun q => Id.run do
+    let mut y := x
+    for _ in [0:reps] do
+      y := BLAS.Float64.Mat.symv .lower (α q) T x 0.5 y
+    return y.data[0]!
+  let tsu ← time rounds m fun q => Id.run do
+    let mut y := x
+    for _ in [0:reps] do
+      y := BLAS.Float64.Mat.symv .upper (α q) T x 0.5 y
+    return y.data[0]!
   return ([⟨s!"gemv {m} ×{reps}", tv, none⟩, ⟨s!"gemvT {m} ×{reps}", tt, none⟩,
     ⟨s!"ger {m} ×{reps}", tg, none⟩, ⟨s!"gemv {m} ×{reps}, stride 2 / stride 1", tv2, some tv⟩,
     ⟨s!"trsv lower {m} ×{reps}", tl, none⟩, ⟨s!"trsv upper {m} ×{reps}", tu, none⟩,
@@ -347,7 +357,9 @@ def level2Rows (rounds m : Nat) : IO (List Row × Nat) := do
     ⟨s!"trmv lower {m} ×{reps} / trsv", tlM, some tl⟩,
     ⟨s!"trmv upper {m} ×{reps} / trsv", tuM, some tu⟩,
     ⟨s!"trmvT lower {m} ×{reps} / trsv", tlMT, some tl⟩,
-    ⟨s!"trmvT upper {m} ×{reps} / trsv", tuMT, some tu⟩],
+    ⟨s!"trmvT upper {m} ×{reps} / trsv", tuMT, some tu⟩,
+    ⟨s!"symv lower {m} ×{reps} / gemv", tsl, some tv⟩,
+    ⟨s!"symv upper {m} ×{reps} / gemv", tsu, some tv⟩],
     2 * m * m * reps)
 
 /--

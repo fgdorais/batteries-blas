@@ -50,16 +50,18 @@ public def main (args : List String) : IO Unit := do
       IO.println s!"| {r.name} | {fmt r.time} | {c} | {ratio} |"
     IO.println "\nLevel 2 on square matrices, in GFLOP/s.\n"
     IO.println "| Size | gemv | gemvT | ger | gemv, stride 2 | trsv, lower | trsv, upper \
-      | trsvT, lower | trsvT, upper | trmv, lower | trmv, upper | trmvT, lower | trmvT, upper |"
-    IO.println "|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|"
+      | trsvT, lower | trsvT, upper | trmv, lower | trmv, upper | trmvT, lower | trmvT, upper \
+      | symv, lower | symv, upper |"
+    IO.println "|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|"
     for (rs, flops) in level2, m in level2Sizes do
       let g (t : Float) := fmt (flops.toFloat / (t * 1e6))
       match rs with
-      | [v, t, r, v2, tl, tu, tlT, tuT, ml, mu, mlT, muT] =>
+      | [v, t, r, v2, tl, tu, tlT, tuT, ml, mu, mlT, muT, sl, su] =>
         IO.println
           s!"| {m} | {g v.time} | {g t.time} | {g r.time} | {g v2.time} | {g (2 * tl.time)} \
             | {g (2 * tu.time)} | {g (2 * tlT.time)} | {g (2 * tuT.time)} | {g (2 * ml.time)} \
-            | {g (2 * mu.time)} | {g (2 * mlT.time)} | {g (2 * muT.time)} |"
+            | {g (2 * mu.time)} | {g (2 * mlT.time)} | {g (2 * muT.time)} | {g sl.time} \
+            | {g su.time} |"
       | _ => pure ()
     IO.println "\n`gemm` of square matrices, in GFLOP/s.\n"
     IO.println

@@ -6,11 +6,11 @@ Basic Linear Algebra Subprograms written entirely in Lean 4, on the unboxed arra
 [lean4-scalar-arrays](https://github.com/fgdorais/lean4-scalar-arrays), with no C code of its own.
 The routines come with proved specifications; their speed is measured, not promised.
 
-It has, on `Float64` and `Float32`, the BLAS Level 1 routines on strided vectors, `gemv`, `ger` and
-`trsv`, `trmv` (with their transposed forms), and `gemm`, `syrk`, `trsm` and `trmm` (with theirs) on
-matrices with an offset and a leading dimension, as well as the mixed-precision `dsdot` and `sdsdot`. The
-`Float32` routines are in `BLAS.Float32`, with the same names and specifications as those of
-`BLAS.Float64`, on `Float32Array`.
+It has, on `Float64` and `Float32`, the BLAS Level 1 routines on strided vectors, `gemv`, `ger`,
+`symv` and `trsv`, `trmv` (with their transposed forms), and `gemm`, `syrk`, `trsm` and `trmm`
+(with theirs) on matrices with an offset and a leading dimension, as well as the mixed-precision
+`dsdot` and `sdsdot`. The `Float32` routines are in `BLAS.Float32`, with the same names and
+specifications as those of `BLAS.Float64`, on `Float32Array`.
 
 ## Usage
 
@@ -118,6 +118,7 @@ operations of the reference BLAS in its order, although `gemv` and `gemvT` handl
 | `trsvT uplo diag A x` | `A⁻ᵀ * x` for a triangular `A`, over `x` | `getElem_trsvT_upper`, `getElem_trsvT_lower` |
 | `trmv uplo diag A x` | `A * x` for a triangular `A`, over `x` | `getElem_trmv_upper`, `getElem_trmv_lower` |
 | `trmvT uplo diag A x` | `Aᵀ * x` for a triangular `A`, over `x` | `getElem_trmvT_upper`, `getElem_trmvT_lower` |
+| `symv uplo α A x β y` | `α * A * x + β * y` for a symmetric `A`, over `y` | `getElem_symv_upper`, `getElem_symv_lower` |
 
 These are the general cases. As in the reference BLAS, `gemv` and `gemvT` return `y` when the sum
 is empty (`n = 0`, resp. `m = 0`), only scale `y` when `α = 0`, and set it to `0` without reading
@@ -143,6 +144,15 @@ never read an element of `x` they have already overwritten, so their specificati
 unit diagonal. For the lower triangle, the terms run from `j = i - 1` down to `0`. `trmvT` adds the
 terms `A[(i, j)] * x[i]` of column `j`, from `i = j - 1` down to `0` for the upper triangle, and
 from `i = j + 1` up to `n - 1` for the lower one.
+
+`symv` reads only the triangle `uplo` of the symmetric `A`, in the loops of the reference `dsymv`:
+it scales `y` by `β` first (setting it to `0` when `β = 0`, and only scaling it when `α = 0`), and
+then each column `j` of the triangle adds `α * x[j] * A[(i, j)]` to the other elements `y[i]` of
+the column, and to `y[j]` the diagonal term `α * x[j] * A[(j, j)]` and `α` times the dot product
+of the rest of the column with `x`. For the upper triangle, `(symv .upper α A x β y)[i]` is
+`betaMul β y[i] + α * x[i] * A[(i, i)] + α * t`, where `t` sums `A[(k, i)] * x[k]` for `k < i`,
+followed by the terms `α * x[j] * A[(i, j)]` for `j > i`; for the lower triangle the terms for
+`j < i` come first, and the dot product runs over `k > i`.
 
 The other Level 3 routines also run directly on any `Mat`, update their last argument in place
 when its array is not shared, and leave the elements outside the result unchanged:

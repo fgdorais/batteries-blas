@@ -23,6 +23,7 @@ public import BLAS.Float64.Trsm
 public import BLAS.Float64.TrsmT
 public import BLAS.Float64.Trmm
 public import BLAS.Float64.TrmmRight
+public import BLAS.Float64.Symv
 
 /-!
 # BLAS on `Float`
