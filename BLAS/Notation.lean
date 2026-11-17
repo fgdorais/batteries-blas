@@ -15,9 +15,19 @@ The root module `BLAS` doesn't import this one, because it makes `blas%` a keywo
 `A[:, j]` mean something only there, and `•` and `*` have the precedence of the formula.
 
 `blas% y := e` updates `y` by a single routine, chosen from the form of `e` and the kinds of its
-operands. In a `do` block it reassigns the mutable variable `y`, and as a term, `blas%(y := e)` is
-the new value of `y`. `blas% y += e` is `blas% y := y + e`, and `blas% y -= e` is
-`blas% y := y - e`.
+operands. `y += e` is `y := y + e`, and `y -= e` is `y := y - e`. A block of updates, one per
+line, needs `blas%` only once:
+
+```
+blas% do
+  y := α • A * x + β • y
+  y -= 2 • A[:, 0]
+  x := A.lower⁻¹ * x
+```
+
+In a `do` block, `blas% do …` reassigns the mutable variables that are its targets, in order, and
+`blas% y := e` is a block of one statement. As a term, `blas% do …` is the new value of the last
+target, and `blas%(y := e)`, a block of one statement, is the routine call itself.
 
 | Update                       | Expansion                     | Routine                    |
 |------------------------------|-------------------------------|----------------------------|
@@ -208,32 +218,83 @@ private meta def expand (y : Ident) (e : TSyntax `blasSum) (add sub : Bool) : Ma
   | #[], some (some c) => `(BLAS.Scal.run $c $y)
   | _, _ => fail
 
-/-- `blas%(y := e)` is the new value of `y` after the update `y := e` by a single routine. -/
-scoped syntax (name := blasTerm) "blas%(" ident " := " blasSum ")" : term
+/-- A statement of `blas%`: an update of a variable by a single routine. -/
+declare_syntax_cat blasStmt
 
-/-- `blas%(y += e)` is `blas%(y := e + y)`. -/
-scoped syntax (name := blasAddTerm) "blas%(" ident " += " blasSum ")" : term
+/-- `y := e` updates `y` by a single routine. -/
+syntax (name := blasAssign) ident " := " blasSum : blasStmt
 
-/-- `blas% y := e` updates the mutable variable `y` by a single routine. -/
-scoped syntax (name := blasDo) "blas% " ident " := " blasSum : doElem
+/-- `y += e` is `y := y + e`. -/
+syntax (name := blasAddAssign) ident " += " blasSum : blasStmt
 
-/-- `blas% y += e` is `blas% y := e + y`. -/
-scoped syntax (name := blasAddDo) "blas% " ident " += " blasSum : doElem
+/-- `y -= e` is `y := y - e`. -/
+syntax (name := blasSubAssign) ident " -= " blasSum : blasStmt
 
-/-- `blas%(y -= e)` is `blas%(y := y - e)`. -/
-scoped syntax (name := blasSubTerm) "blas%(" ident " -= " blasSum ")" : term
+/-- The target of a statement, and its routine call. -/
+private meta def statement (s : TSyntax `blasStmt) : MacroM (Ident × Term) := do
+  match s with
+  | `(blasStmt| $y:ident := $e) => return (y, ← expand y e false false)
+  | `(blasStmt| $y:ident += $e) => return (y, ← expand y e true false)
+  | `(blasStmt| $y:ident -= $e) => return (y, ← expand y e true true)
+  | _ => Macro.throwUnsupported
 
-/-- `blas% y -= e` is `blas% y := y - e`. -/
-scoped syntax (name := blasSubDo) "blas% " ident " -= " blasSum : doElem
+/--
+`blas% do` followed by statements, one per line, updates their targets in order, each by a single
+routine. In a `do` block, the targets are mutable variables, which it reassigns.
+-/
+scoped syntax (name := blasDoBlock) (priority := high)
+  "blas% " "do" sepBy1IndentSemicolon(blasStmt) : doElem
 
-macro_rules
-  | `(blas%($y := $e)) => expand y e false false
-  | `(blas%($y += $e)) => expand y e true false
-  | `(blas%($y -= $e)) => expand y e true true
+/-- `blas% y := e` is the block `blas% do y := e` of one statement. -/
+scoped syntax (name := blasDoLine) "blas% " blasStmt : doElem
 
-macro_rules
-  | `(doElem| blas% $y:ident := $e) => `(doElem| $y:ident := blas%($y := $e))
-  | `(doElem| blas% $y:ident += $e) => `(doElem| $y:ident := blas%($y += $e))
-  | `(doElem| blas% $y:ident -= $e) => `(doElem| $y:ident := blas%($y -= $e))
+/--
+As a term, `blas% do` followed by statements is the new value of the target of the last one. It
+updates copies of the targets, which shadow them, as in `Id.run do let mut y := y; …; return y`.
+-/
+scoped syntax (name := blasBlock) "blas% " "do" sepBy1IndentSemicolon(blasStmt) : term
+
+/--
+`blas%(y := e)` is the block `blas% do y := e` of one statement as a term: the new value of `y`,
+which is the routine call itself.
+-/
+scoped syntax (name := blasTerm) "blas%(" blasStmt ")" : term
+
+/-- The `do` elements of the statements of a block. -/
+private meta def doElems (ss : Array (TSyntax `blasStmt)) : MacroM (Array (TSyntax `doElem)) :=
+  ss.mapM fun s => do
+    let (y, call) ← statement s
+    `(doElem| $y:ident := $call)
+
+/-- The term of a block: the routine call of a single statement, or a `do` block otherwise. -/
+private meta def block (ss : Array (TSyntax `blasStmt)) : MacroM Term := do
+  if h : ss.size = 1 then
+    return (← statement ss[0]).2
+  let mut targets : Array Ident := #[]
+  for s in ss do
+    let (y, _) ← statement s
+    unless targets.any (·.getId == y.getId) do targets := targets.push y
+  let some last := ss.back? | Macro.throwUnsupported
+  let (r, _) ← statement last
+  let lets ← targets.mapM fun y => `(doElem| let mut $y:ident := $y:ident)
+  let ret ← `(doElem| return $r:ident)
+  let elems := lets ++ (← doElems ss) ++ #[ret]
+  `(Id.run do $[$elems:doElem]*)
+
+macro_rules (kind := blasDoBlock)
+  | `(doElem| blas% do $[$ss:blasStmt]*) => do
+    let elems ← doElems ss
+    `(doElem| do $[$elems:doElem]*)
+
+macro_rules (kind := blasDoLine)
+  | `(doElem| blas% $s:blasStmt) => do
+    let elems ← doElems #[s]
+    `(doElem| do $[$elems:doElem]*)
+
+macro_rules (kind := blasBlock)
+  | `(blas% do $[$ss:blasStmt]*) => block ss
+
+macro_rules (kind := blasTerm)
+  | `(blas%($s:blasStmt)) => block #[s]
 
 end BLAS.Notation

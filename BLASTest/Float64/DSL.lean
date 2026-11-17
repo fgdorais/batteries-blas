@@ -106,6 +106,15 @@ example (x y : Vec n) : blas%(y -= α • x) = Vec.axpy (-α) x y := by simp
 
 example (x : Vec n) : blas%(x := -x) = Vec.scal (-1) x := by simp
 
+-- A block is its routine calls in order, and a block of one statement is its call.
+example (x y : Vec n) :
+    (blas% do
+      y := α • x + y
+      y := β • y) = Vec.scal β (Vec.axpy α x y) := by simp
+
+example (A : Mat m n) (x : Vec n) (y : Vec m) :
+    (blas% do y := α • A * x + β • y) = Mat.gemv α A x β y := by simp
+
 -- The specifications of the routines apply to the updates.
 example (A : Mat m n) (x : Vec n) (y : Vec m) (i : Nat) (h : i < m) (hn : n ≠ 0)
     (hα : (α == 0) = false) :
@@ -152,6 +161,28 @@ end
   (blas%(y := 2 • x + 3 • y)).toList == [32, 64] && (blas%(y := 2 • x)).toList == [2, 4] &&
     (blas%(C := Aᵀ * A)).toList == [10, 14, 14, 20]
 
+-- A block updates its mutable variables in order, with `blas%` once.
+#guard Id.run do
+  let A : Mat 2 2 := .ofPMat ⟨.ofList [1, 3, 2, 4], by decide⟩
+  let mut x : Vec 2 := .ofList [1, 1]
+  let mut y : Vec 2 := .ofList [0, 0]
+  blas% do
+    y := A * x
+    x := 2 • y - x
+    y -= A[:, 0]
+  -- `y = [3, 7]`, then `x = [5, 13]`, then `y = [2, 4]`.
+  return x.toList == [5, 13] && y.toList == [2, 4]
+
+-- As a term, a block is the new value of its last target.
+#guard
+  let A : Mat 2 2 := .ofPMat ⟨.ofList [1, 3, 2, 4], by decide⟩
+  let x : Vec 2 := .ofList [1, 1]
+  let y : Vec 2 := .ofList [0, 0]
+  let z := blas% do
+    y := A * x
+    y += x
+  z.toList == [4, 8] && y.toList == [0, 0]
+
 -- `C := A * B + C`, for `A = [[1, 2], [3, 4]]`, `B = I` and `C = [[1, 1], [1, 1]]`.
 #guard
   let A : Mat 2 2 := .ofPMat ⟨.ofList [1, 3, 2, 4], by decide⟩
@@ -186,6 +217,20 @@ def inPlace (m : Nat) : Bool := Id.run do
   return BLASTest.addr y.data == p
 
 #guard inPlace 8
+
+/-- The same updates as one block, as a term. -/
+def inPlaceBlock (m : Nat) : Bool :=
+  let A : Mat m m := .ofFn fun i j => ((i.val * 7 + j.val * 13) % 11).toFloat - 5
+  let x : Vec m := .ofFn fun i => (i.val % 9).toFloat - 4
+  let (p, y) := withAddr (.ofFn fun i => (i.val % 5).toFloat)
+  let z := blas% do
+    y := 2 • A * x + 3 • y
+    y += 2 • Aᵀ * x
+    y += 2 • x
+    y := A.unitLower⁻¹ * y
+  BLASTest.addr z.data == p
+
+#guard inPlaceBlock 8
 
 /-! ## Updates that no single routine computes -/
 
