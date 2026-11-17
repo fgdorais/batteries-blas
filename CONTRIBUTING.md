@@ -60,8 +60,9 @@ don't put them under `BLAS/Float32/`, whose untemplated files the script removes
 
 - Use `lia` and `grind`, not `omega`.
 - `lia` and `grind` run out of memory on literal `2^64` moduli, so keep `USize.size` symbolic.
-- A `grind` or `lia` proof inside the body of an `inplace` loop captures the loop's state and stops
-  the loop lemmas from matching. Use a named lemma there, such as `BLAS.toNat_succ_add`.
+- Inside the body of an `inplace` loop, write `grind [-PUnit]`. Plain `grind` may case-split on
+  the loop's `Unit` state, since core marks `PUnit` as `grind cases eager`. Its proof then mentions
+  the state, and the loop lemmas stop matching.
 - Lemma names follow core and scalar-arrays: `getElem_axpy`, `data_axpy`, `size_gemmCol`.
 
 ## Design
