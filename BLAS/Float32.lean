@@ -16,6 +16,7 @@ public import BLAS.Float32.Syrk
 public import BLAS.Float32.Level3
 public import BLAS.Float32.GemmBlocked
 public import BLAS.Float32.Gemm
+public import BLAS.Float32.GemmT
 public import BLAS.Float32.Trsm
 
 /-!

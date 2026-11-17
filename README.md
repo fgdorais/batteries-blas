@@ -7,7 +7,7 @@ Basic Linear Algebra Subprograms written entirely in Lean 4, on the unboxed arra
 The routines come with proved specifications; their speed is measured, not promised.
 
 It has, on `Float64` and `Float32`, the BLAS Level 1 routines on strided vectors, `gemv`, `ger` and
-`trsv`, and `gemm`, `syrk` and `trsm` on matrices with an offset and a leading dimension. The
+`trsv`, and `gemm` (with its transposed forms), `syrk` and `trsm` on matrices with an offset and a leading dimension. The
 `Float32` routines are in `BLAS.Float32`, with the same names and specifications as those of
 `BLAS.Float64`, on `Float32Array`.
 
@@ -90,7 +90,17 @@ of `C` and four terms at a time, which the C compiler vectorizes. Each element s
 in the order of the specification. `Mat.gemmNaive` runs the naive loops of the reference BLAS, about
 half as fast, and `gemm_eq_gemmNaive` proves that the results are the same to the bit.
 
-Both run their kernels on packed matrices, `PMat m n`. A packed `Mat` goes to the kernel as it is,
+The transposed forms of the reference BLAS are `Mat.gemmTN` (`α * Aᵀ * B + β * C`), `Mat.gemmNT`
+(`α * A * Bᵀ + β * C`) and `Mat.gemmTT` (`α * Aᵀ * Bᵀ + β * C`), each with the loops of the
+reference BLAS for its form and their special cases: `gemmTN` and `gemmTT` sum the products
+`A[l, i] * op(B)[l, j]` into `t` and write `α * t + β * C[i, j]`, or `α * t` when `β = 0`, and
+leave `C` unchanged when `k = 0` and `β = 1`; `gemmNT` adds the terms `α * B[j, l] * A[i, l]` as
+`gemm` does. `gemmTN` computes four elements of a column of `C` per pass over a column of `B`, with
+the sums of `gemvT`, at about half the speed of `gemm`. `gemmNT` and `gemmTT` copy `B` into
+`Mat.transpose B` and run the kernels of `gemm` and `gemmTN`, which keeps each element's operations
+and their order. `getElem_gemmTN`, `getElem_gemmNT` and `getElem_gemmTT` give their elements.
+
+Both `gemm` and `gemmNaive` run their kernels on packed matrices, `PMat m n`. A packed `Mat` goes to the kernel as it is,
 and a packed `C` is updated in place. Any other matrix is packed into a copy first, one `memmove`
 per column, and the columns of the result are copied back into `C`'s array.
 

@@ -60,13 +60,15 @@ public def main (args : List String) : IO Unit := do
             | {g (2 * tu.time)} |"
       | _ => pure ()
     IO.println "\n`gemm` of square matrices, in GFLOP/s.\n"
-    IO.println "| Size | gemmNaive | gemm | gemm, ld = m + 8 | Reference |"
-    IO.println "|--:|--:|--:|--:|--:|"
+    IO.println
+      "| Size | gemmNaive | gemm | gemm, ld = m + 8 | gemmTN | gemmNT | gemmTT | Reference |"
+    IO.println "|--:|--:|--:|--:|--:|--:|--:|--:|"
     for (rs, flops) in gemm, m in gemmSizes do
       let g (t : Float) := fmt (flops.toFloat / (t * 1e6))
       match rs with
-      | [r, rb, rl] =>
-        IO.println s!"| {m} | {g r.time} | {g rb.time} | {g rl.time} | {(r.ref.map g).getD "—"} |"
+      | [r, rb, rl, tn, nt, tt] =>
+        IO.println s!"| {m} | {g r.time} | {g rb.time} | {g rl.time} | {g tn.time} | {g nt.time} \
+          | {g tt.time} | {(r.ref.map g).getD "—"} |"
       | _ => pure ()
     IO.println "\n`syrk` and `trsm` of square matrices, in GFLOP/s.\n"
     IO.println "| Size | syrk, lower | syrkT, lower | trsm, lower | trsmRight, upper |"
