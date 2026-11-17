@@ -21,8 +21,10 @@ the new value of `y`. `blas% y += e` is `blas% y := y + e`, and `blas% y -= e` i
 
 | Update                       | Expansion                     | Routine                    |
 |------------------------------|-------------------------------|----------------------------|
-| `y := α • A * x + β • y`     | `MulAdd.run α A x β y`        | `gemv`, `gemvT` or `gemm`  |
+| `y := α • A * x + β • y`     | `MulAdd.run α A x β y`        | `gemv`, `gemvT`, `gemm`, … |
 | `y := α • x + y`             | `Axpy.run α x y`              | `axpy`                     |
+| `y := α • x + β • y`         | `Axpby.run α x β y`           | `axpby`                    |
+| `y := α • x`                 | `Axpby.run α x 0 y`           | `axpby`                    |
 | `x := α • x`                 | `Scal.run α x`                | `scal`                     |
 | `y := x`                     | `Copy.run x y`                | `copy`                     |
 | `x := T⁻¹ * x`               | `Solve.run T x`               | `trsv`, or `trsm` (`α = 1`) |
@@ -30,7 +32,8 @@ the new value of `y`. `blas% y += e` is `blas% y := y + e`, and `blas% y -= e` i
 | `B := α • B * T⁻¹`           | `SolveRight.run α B T`        | `trsmRight`                |
 
 The routine of `MulAdd` follows from the kinds of `A` and `x`: a matrix and a vector is `gemv`, a
-transpose `Aᵀ` and a vector `gemvT`, and two matrices `gemm`. A missing `α` is `1`, a missing
+transpose `Aᵀ` and a vector `gemvT`, two matrices `gemm`, and transposes `gemmTN` (`Aᵀ * B`),
+`gemmNT` (`A * Bᵀ`) and `gemmTT` (`Aᵀ * Bᵀ`). A missing `α` is `1`, a missing
 `β • y` is `β = 0`, which sets `y` to `0` without reading it, as in the reference BLAS, and a bare
 `y` is `β = 1`. The summands may come in any order, and a subtracted summand `- α • …` has the
 scalar `-α` (`-1` if it has none). Floating-point negation is exact, and `a - b` is `a + (-b)`, so
@@ -47,9 +50,9 @@ precedence of `*`, such as `α`, `-α`, `f a`, `x.dot y` or `A.lower⁻¹`. A fa
 transpose `Aᵀ`, a column `A[:, j]` or a row `A[i, :]` of a matrix `A`, as vectors with no copy.
 
 An update that no single routine computes is an error at compile time, never a combination of
-routines: `α • x + β • y` (no `axpby` in the reference BLAS), `A * B * x`, `y := α • x` (a copy
-and a scaling), or `Aᵀ * B` (no instance of `MulAdd`, since the library has no transposed
-`gemm`). So the expansion is always one call, with the speed and the specification of its routine.
+routines: `A * B * x` (two products), `y := A * x + z` with `z` not the target, or a product of
+operands of sizes that don't match (no instance of `MulAdd`). So the expansion is always one call,
+with the speed and the specification of its routine.
 -/
 
 namespace BLAS.Notation
@@ -195,6 +198,10 @@ private meta def expand (y : Ident) (e : TSyntax `blasSum) (add sub : Bool) : Ma
       `(BLAS.MulAdd.run $α $a $x $β $y)
   -- `y := α • x + y`.
   | #[.plain c x], some none => `(BLAS.Axpy.run $(← c.getDM `(1)) $x $y)
+  -- `y := α • x + β • y`.
+  | #[.plain c x], some (some β) => `(BLAS.Axpby.run $(← c.getDM `(1)) $x $β $y)
+  -- `y := α • x`, which sets `y` to `α * x` without reading it.
+  | #[.plain (some c) x], none => `(BLAS.Axpby.run $c $x 0 $y)
   -- `y := x`.
   | #[.plain none x], none => `(BLAS.Copy.run $x $y)
   -- `x := α • x`.

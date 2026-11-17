@@ -49,16 +49,28 @@ example (A : Mat m n) (x : Vec n) (y : Vec m) : blas%(y += α • A * x) = Mat.g
 example (A : Mat m n) (x : Vec m) (y : Vec n) :
     blas%(y := α • Aᵀ * x + β • y) = Mat.gemvT α A x β y := by simp
 
-example (A : Mat m n) (x : Vec m) (y : Vec n) :
-    blas%(y := α • A.transpose * x + β • y) = Mat.gemvT α A x β y := by simp
-
 example (A : Mat m k) (B : Mat k n) (C : Mat m n) :
     blas%(C := α • A * B + β • C) = Mat.gemm α A B β C := by simp
 
 example (A : Mat m k) (B : Mat k n) (C : Mat m n) : blas%(C += A * B) = Mat.gemm 1 A B 1 C := by
   simp
 
+example (A : Mat k m) (B : Mat k n) (C : Mat m n) :
+    blas%(C := α • Aᵀ * B + β • C) = Mat.gemmTN α A B β C := by simp
+
+example (A : Mat m k) (B : Mat n k) (C : Mat m n) :
+    blas%(C += A * Bᵀ) = Mat.gemmNT 1 A B 1 C := by simp
+
+example (A : Mat k m) (B : Mat n k) (C : Mat m n) :
+    blas%(C := Aᵀ * Bᵀ) = Mat.gemmTT 1 A B 0 C := by simp
+
 example (x y : Vec n) : blas%(y := α • x + y) = Vec.axpy α x y := by simp
+
+example (x y : Vec n) : blas%(y := α • x + β • y) = Vec.axpby α x β y := by simp
+
+example (x y : Vec n) : blas%(y := α • x) = Vec.axpby α x 0 y := by simp
+
+example (x y : Vec n) : blas%(y := x - y) = Vec.axpby 1 x (-1) y := by simp
 
 example (x y : Vec n) : blas%(y += x) = Vec.axpy 1 x y := by simp
 
@@ -131,6 +143,15 @@ end
   let y : Vec 2 := .ofList [5, 5]
   (blas%(y -= 2 • x)).toList == [3, 3] && (blas%(y := A * x - y)).toList == [-2, 2]
 
+-- `2 • x + 3 • y` and `y := 2 • x`, by `axpby`, and `Aᵀ * B` by `gemmTN`.
+#guard
+  let A : Mat 2 2 := .ofPMat ⟨.ofList [1, 3, 2, 4], by decide⟩
+  let x : Vec 2 := .ofList [1, 2]
+  let y : Vec 2 := .ofList [10, 20]
+  let C : Mat 2 2 := .ofPMat ⟨.ofList [0, 0, 0, 0], by decide⟩
+  (blas%(y := 2 • x + 3 • y)).toList == [32, 64] && (blas%(y := 2 • x)).toList == [2, 4] &&
+    (blas%(C := Aᵀ * A)).toList == [10, 14, 14, 20]
+
 -- `C := A * B + C`, for `A = [[1, 2], [3, 4]]`, `B = I` and `C = [[1, 1], [1, 1]]`.
 #guard
   let A : Mat 2 2 := .ofPMat ⟨.ofList [1, 3, 2, 4], by decide⟩
@@ -172,25 +193,13 @@ def inPlace (m : Nat) : Bool := Id.run do
 error: blas%: no single BLAS routine computes this update of `y`
 -/
 #guard_msgs in
-example (x y : Vec 2) : Vec 2 := blas%(y := (2 : Float) • x + (3 : Float) • y)
-
-/--
-error: blas%: no single BLAS routine computes this update of `y`
--/
-#guard_msgs in
-example (x y : Vec 2) : Vec 2 := blas%(y := (2 : Float) • x)
-
-/--
-error: blas%: no single BLAS routine computes this update of `y`
--/
-#guard_msgs in
-example (x y : Vec 2) : Vec 2 := blas%(y := x - y)
-
-/--
-error: blas%: no single BLAS routine computes this update of `y`
--/
-#guard_msgs in
 example (A : Mat 2 2) (x z y : Vec 2) : Vec 2 := blas%(y := A * x - z)
+
+/--
+error: blas%: no single BLAS routine computes this update of `y`
+-/
+#guard_msgs in
+example (x z y : Vec 2) : Vec 2 := blas%(y := (2 : Float) • x + (3 : Float) • z)
 
 /--
 error: blas%: no single BLAS routine computes a product of three factors

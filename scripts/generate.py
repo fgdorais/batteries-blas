@@ -63,10 +63,11 @@ SPECIFIC = [
   ('[1e-300, 1]', '[1e-30, 1]'),
   ('[1e300, 1e300]', '[1e30, 1e30]'),
   ('[1e-300, 0 / 0]', '[1e-30, 0 / 0]'),
-  # The test of `trsv` against the reference loops: the unit solves of size 300 overflow `Float32`
-  # (to `NaN`, which is not equal to itself); those of size 80 don't.
+  # The tests of `trsv` and `trsvT` against the reference loops: the unit solves of size 300
+  # overflow `Float32` (to `NaN`, which is not equal to itself); those of size 80 don't.
   ('trsvMatches 300 u d', 'trsvMatches 80 u d'),
-  # The tolerance of the residual of `trsv`.
+  ('trsvTMatches 300 u d', 'trsvTMatches 80 u d'),
+  # The tolerance of the residuals of the triangular solves.
   ('< 1e-12', '< 1e-4'),
   # The rotations: the constants of `srotg.f90` and `srotmg.f`, and the sign bit of `sign1`.
   ('toBits >>> 63', 'toBits >>> 31'),

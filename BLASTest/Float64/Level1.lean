@@ -66,6 +66,58 @@ def axpyInPlace (n : Nat) : Bool :=
   let z := Vec.axpy 2 (ramp 8) y
   y.toList == (ramp 8).toList && z.toList == (ramp 8 3).toList
 
+/-! ## `axpby` -/
+
+#guard (Vec.axpby 2 (.ofList (n := 3) [1, 2, 3]) 3 (.ofList (n := 3) [10, 20, 30])).toList ==
+  [32, 64, 96]
+#guard (Vec.axpby 2 (ramp 0) 3 (ramp 0)).toList == []
+
+-- Every element, past 16 bits of index, in each of the three loops.
+#guard
+  let n := 70000
+  let z := Vec.axpby 2 (ramp n) 3 (ramp n 0.5)
+  let z₀ := Vec.axpby 2 (ramp n) 0 (ramp n 0.5)
+  let zα := Vec.axpby 0 (ramp n) 3 (ramp n 0.5)
+  (List.range n).all fun i =>
+    z.toList[i]! == 3.5 * i.toFloat && z₀.toList[i]! == 2 * i.toFloat &&
+      zα.toList[i]! == 1.5 * i.toFloat
+
+-- As in OpenBLAS's `daxpby`, `α = 0` scales `y` without reading `x`, `β = 0` sets `y` to `α * x`
+-- without reading `y`, and both set `y` to `0`.
+#guard
+  let inf : Float := 1 / 0
+  let x : Vec 2 := .ofList [inf, 0 / 0]
+  let y : Vec 2 := .ofList [1, 2]
+  (Vec.axpby 0 x 3 y).toList == [3, 6] && (Vec.axpby 0 x 0 y).toList == [0, 0] &&
+    (Vec.axpby 2 y 0 x).toList == [2, 4]
+
+-- `β = 0` gives `α * x[i]`, not `α * x[i] + 0`: the sign of a zero product is kept.
+#guard
+  let z := Vec.axpby (-1) (.ofList (n := 1) [0]) 0 (.ofList (n := 1) [5])
+  match z.toList with
+  | [a] => a == 0 && 1 / a == -1 / 0
+  | _ => false
+
+-- Otherwise special values propagate as in `α * x[i] + β * y[i]`.
+#guard
+  let inf : Float := 1 / 0
+  let z := Vec.axpby 1 (.ofList (n := 3) [inf, -inf, 1]) 2 (.ofList (n := 3) [1, inf, 0 / 0])
+  match z.toList with
+  | [a, b, c] => a == inf && b.isNaN && c.isNaN
+  | _ => false
+
+/-- Whether `axpby` updates an unshared `y` in place, in each of its three loops. -/
+def axpbyInPlace (n : Nat) : Bool :=
+  -- Different vectors, which the compiler doesn't merge into one shared value.
+  let (p, y) := withAddr (ramp n 1)
+  let (q, y₀) := withAddr (ramp n 2)
+  let (r, yα) := withAddr (ramp n 4)
+  BLASTest.addr (Vec.axpby 2 (ramp n 3) 3 y).data == p &&
+    BLASTest.addr (Vec.axpby 2 (ramp n 3) 0 y₀).data == q &&
+    BLASTest.addr (Vec.axpby 0 (ramp n 3) 3 yα).data == r
+
+#guard axpbyInPlace 8
+
 /-! ## `scal` -/
 
 #guard (Vec.scal 2 (.ofList (n := 3) [1, -2, 3])).toList == [2, -4, 6]
@@ -180,6 +232,12 @@ def outside (x : Vec n) : Nat := x.data.toList.countP (· == -1)
 #guard
   let z := Vec.axpy 2 (strided 5 1 3) (strided 5 2 2 0.5)
   z.toList == (Vec.axpy 2 (ramp 5) (ramp 5 0.5)).toList && outside z == outside (strided 5 2 2)
+#guard
+  let z := Vec.axpby 2 (strided 5 1 3) 3 (strided 5 2 2 0.5)
+  z.toList == (Vec.axpby 2 (ramp 5) 3 (ramp 5 0.5)).toList && outside z == outside (strided 5 2 2)
+#guard
+  let z := Vec.axpby 2 (strided 5 1 3) 0 (strided 5 2 2 0.5)
+  z.toList == (ramp 5 2).toList && outside z == outside (strided 5 2 2)
 #guard
   let z := Vec.scal 3 (strided 5 4 3)
   z.toList == (ramp 5 3).toList && outside z == outside (strided 5 4 3)

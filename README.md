@@ -7,7 +7,8 @@ Basic Linear Algebra Subprograms written entirely in Lean 4, on the unboxed arra
 The routines come with proved specifications; their speed is measured, not promised.
 
 It has, on `Float64` and `Float32`, the BLAS Level 1 routines on strided vectors, `gemv`, `ger` and
-`trsv`, and `gemm`, `syrk` and `trsm` on matrices with an offset and a leading dimension. The
+`trsv`, `trmv` (with their transposed forms), and `gemm`, `syrk`, `trsm` and `trmm` (with theirs) on
+matrices with an offset and a leading dimension, as well as the mixed-precision `dsdot` and `sdsdot`. The
 `Float32` routines are in `BLAS.Float32`, with the same names and specifications as those of
 `BLAS.Float64`, on `Float32Array`.
 
@@ -39,6 +40,7 @@ semantics of the reference BLAS (Reference-LAPACK `master`), including its speci
 | Routine | Result | Specification |
 |---|---|---|
 | `axpy α x y` | `α * x + y`, over `y` | `if α == 0 then y[i] else α * x[i] + y[i]` |
+| `axpby α x β y` | `α * x + β * y`, over `y` (not in the reference BLAS; as OpenBLAS's `daxpby`) | `axpbyAt α β x[i] y[i]` |
 | `scal α x` | `α * x`, over `x` | `(scal α x)[i] = α * x[i]` |
 | `copy x y` | `x`, over `y` | `(copy x y)[i] = x[i]` |
 | `swap x y` | `(y, x)` | `swap_fst`, `swap_snd` |
@@ -90,7 +92,17 @@ of `C` and four terms at a time, which the C compiler vectorizes. Each element s
 in the order of the specification. `Mat.gemmNaive` runs the naive loops of the reference BLAS, about
 half as fast, and `gemm_eq_gemmNaive` proves that the results are the same to the bit.
 
-Both run their kernels on packed matrices, `PMat m n`. A packed `Mat` goes to the kernel as it is,
+The transposed forms of the reference BLAS are `Mat.gemmTN` (`α * Aᵀ * B + β * C`), `Mat.gemmNT`
+(`α * A * Bᵀ + β * C`) and `Mat.gemmTT` (`α * Aᵀ * Bᵀ + β * C`), each with the loops of the
+reference BLAS for its form and their special cases: `gemmTN` and `gemmTT` sum the products
+`A[l, i] * op(B)[l, j]` into `t` and write `α * t + β * C[i, j]`, or `α * t` when `β = 0`, and
+leave `C` unchanged when `k = 0` and `β = 1`; `gemmNT` adds the terms `α * B[j, l] * A[i, l]` as
+`gemm` does. `gemmTN` computes four elements of a column of `C` per pass over a column of `B`, with
+the sums of `gemvT`, at about half the speed of `gemm`. `gemmNT` and `gemmTT` copy `B` into
+`Mat.transpose B` and run the kernels of `gemm` and `gemmTN`, which keeps each element's operations
+and their order. `getElem_gemmTN`, `getElem_gemmNT` and `getElem_gemmTT` give their elements.
+
+Both `gemm` and `gemmNaive` run their kernels on packed matrices, `PMat m n`. A packed `Mat` goes to the kernel as it is,
 and a packed `C` is updated in place. Any other matrix is packed into a copy first, one `memmove`
 per column, and the columns of the result are copied back into `C`'s array.
 
@@ -104,6 +116,9 @@ operations of the reference BLAS in its order, although `gemv` and `gemvT` handl
 | `gemvT α A x β y` | `α * Aᵀ * x + β * y`, over `y` | `betaMul β y[j] + α * Nat.fold m (fun i _ s => s + A[(i, j)] * x[i]) 0` |
 | `ger α x y A` | `α * x * yᵀ + A`, over `A` | `A[(i, j)] + x[i] * (α * y[j])`, or `A[(i, j)]` if `α = 0` or `y[j] = 0` |
 | `trsv uplo diag A x` | `A⁻¹ * x` for a triangular `A`, over `x` | `getElem_trsv_lower`, `getElem_trsv_upper` |
+| `trsvT uplo diag A x` | `A⁻ᵀ * x` for a triangular `A`, over `x` | `getElem_trsvT_upper`, `getElem_trsvT_lower` |
+| `trmv uplo diag A x` | `A * x` for a triangular `A`, over `x` | `getElem_trmv_upper`, `getElem_trmv_lower` |
+| `trmvT uplo diag A x` | `Aᵀ * x` for a triangular `A`, over `x` | `getElem_trmvT_upper`, `getElem_trmvT_lower` |
 
 These are the general cases. As in the reference BLAS, `gemv` and `gemvT` return `y` when the sum
 is empty (`n = 0`, resp. `m = 0`), only scale `y` when `α = 0`, and set it to `0` without reading
@@ -118,7 +133,17 @@ y[i] = d.apply (Nat.fold i (fun l _ s => s - y[l] * A[(i, l)]) x[i]) A[(i, i)]
 ```
 
 where `d.apply v a` is `v / a`, or `v` for a unit diagonal. For the upper triangle, the terms run
-from `l = n - 1` down to `i + 1`.
+from `l = n - 1` down to `i + 1`. `trsvT` solves `Aᵀ * y = x` by the dot-product loops of the
+reference `dtrsv`: for the upper triangle, `y[j]` subtracts `A[(i, j)] * y[i]` for `i` from `0` up
+to `j - 1`, and for the lower triangle for `i` from `n - 1` down to `j + 1`, before the division.
+
+`trmv` and `trmvT` multiply by the triangle in the same loops as the reference `dtrmv`, which
+never read an element of `x` they have already overwritten, so their specifications are folds over
+`x`: for the upper triangle, `(trmv .upper d A x)[i]` is `d.mul x[i] A[(i, i)]` plus the terms
+`x[j] * A[(i, j)]` for `j` from `i + 1` up to `n - 1`, where `d.mul v a` is `v * a`, or `v` for a
+unit diagonal. For the lower triangle, the terms run from `j = i - 1` down to `0`. `trmvT` adds the
+terms `A[(i, j)] * x[i]` of column `j`, from `i = j - 1` down to `0` for the upper triangle, and
+from `i = j + 1` up to `n - 1` for the lower one.
 
 The other Level 3 routines also run directly on any `Mat`, update their last argument in place
 when its array is not shared, and leave the elements outside the result unchanged:
@@ -129,6 +154,12 @@ when its array is not shared, and leave the elements outside the result unchange
 | `syrkT uplo α A β C` | `α * Aᵀ * A + β * C` on the triangle `uplo` of `C` | `α * t + β * C[(i, j)]`, or `α * t` if `β = 0`, for `t = Nat.fold k (fun l _ s => s + A[(l, i)] * A[(l, j)]) 0` |
 | `trsm uplo diag α A B` | `X` with `A * X = α * B`, over `B` | `getElem_trsm_lower`, `getElem_trsm_upper` |
 | `trsmRight uplo diag α A B` | `X` with `X * A = α * B`, over `B` | `getElem_trsmRight_upper`, `getElem_trsmRight_lower` |
+| `trsmT uplo diag α A B` | `X` with `Aᵀ * X = α * B`, over `B` | `getElem_trsmT_upper`, `getElem_trsmT_lower` |
+| `trsmRightT uplo diag α A B` | `X` with `X * Aᵀ = α * B`, over `B` | `getElem_trsmRightT_upper`, `getElem_trsmRightT_lower` |
+| `trmm uplo diag α A B` | `α * A * B` for a triangular `A`, over `B` | `getElem_trmm_upper`, `getElem_trmm_lower` |
+| `trmmRight uplo diag α A B` | `α * B * A` for a triangular `A`, over `B` | `getElem_trmmRight_upper`, `getElem_trmmRight_lower` |
+| `trmmT uplo diag α A B` | `α * Aᵀ * B` for a triangular `A`, over `B` | `getElem_trmmT_upper`, `getElem_trmmT_lower` |
+| `trmmRightT uplo diag α A B` | `α * B * Aᵀ` for a triangular `A`, over `B` | `getElem_trmmRightT_upper`, `getElem_trmmRightT_lower` |
 
 As in the reference `dsyrk`, `syrk` and `syrkT` only scale the triangle when `α = 0`, `syrk` skips
 the terms with `A[j, l] = 0`, so that an infinity or a `NaN` in `A` doesn't reach them, and `syrkT`
@@ -136,7 +167,28 @@ leaves `C` unchanged when `k = 0` and `β = 1`. As in the reference `dtrsm`, `tr
 set `B` to `0` without reading `A` or `B` when `α = 0`, scale `B` by `α` before solving, divide by
 the diagonal, and never skip a zero of `B`. `trsm` solves each column of `B` by the loops of
 `trsv`, four columns at a time, so its specification is that of `trsv` on the scaled column;
-`trsmRight` is back substitution along the rows, from the columns already solved.
+`trsmRight` is back substitution along the rows, from the columns already solved. `trsmT` and
+`trsmRightT` are the `transa = 'T'` cases of `dtrsm`, with the same special cases. `trsmT` solves
+each column by dot products, as `trsvT` does, except that for the lower triangle the terms run up
+from `i + 1`, as in `dtrsm`. `trsmRightT` gives each element the operations of `dtrsm`, which
+divides each solved column by the diagonal, subtracts it from the columns still to solve, and only
+then scales it by `α`: its specification is `α` times the solution of `X * Aᵀ = B`, in that order.
+
+The four `trmm` forms are the cases of the reference `dtrmm`, which has no zero skips: as there,
+they set `B` to `0` without reading `A` or `B` when `α = 0`, and read neither the other triangle nor
+a unit diagonal. `trmm` multiplies each column of `B`, scaled by `α`, by the loops of `trmv`, so
+its specification is that of `trmv` on the scaled column. `trmmT` computes each element as a dot
+product with its column, scaled by `α` at the end; for the upper triangle the terms run up from
+`k = 0`, as in `dtrmm`. `trmmRight` and `trmmRightT` compute one column of `B` at a time: they scale
+it by `α * A[j, j]` (by `α` for a unit diagonal), and add `α * A[k, j] * B[i, k]` (`α * A[j, k]` for
+`trmmRightT`) for the other columns `k` of the triangle, in the order of `dtrmm`. They take the
+columns `j` in an order where the columns they read are still those of `B`, so each element gets
+the operations of `dtrmm` in the same order. As in `dtrmm`, `trmmRightT` skips the scaling when
+its factor is `1`.
+
+`BLAS.Float32.Vec.dsdot x y` is the dot product of two `Float32` vectors, accumulated in `Float64`
+from the products of the elements converted to `Float64`, and `sdsdot sb x y` adds it to `sb` in
+`Float64` and rounds the sum to `Float32`, as the reference `dsdot` and `sdsdot` do.
 
 ## Conformance
 

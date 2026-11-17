@@ -10,6 +10,7 @@ public import BLAS.Float32.Level2
 public import BLAS.Float32.Trsv
 public import BLAS.Float32.Gemm
 public import BLAS.Float32.Trsm
+public import BLAS.Float32.GemmT
 
 /-!
 # Views
@@ -31,17 +32,6 @@ open ScalarArray
 namespace BLAS.Float32
 
 /-! ## Transposes -/
-
-namespace Mat
-
-variable {m n : Nat}
-
-/-- The transpose of `A`, with no copy. -/
-@[expose] public def transpose (A : Mat m n) : Transpose (Mat m n) := ⟨A⟩
-
-@[simp] public theorem transpose_eq (A : Mat m n) : A.transpose = Transpose.mk A := rfl
-
-end Mat
 
 /-- `Aᵀ[(i, j)]` is `A[(j, i)]`. -/
 public instance {m n : Nat} : GetElem (Transpose (Mat m n)) (Nat × Nat) Float32
@@ -112,6 +102,23 @@ public instance {m n : Nat} : MulAdd Float32 (Transpose (Mat m n)) (Vec m) (Vec 
 public instance {m k n : Nat} : MulAdd Float32 (Mat m k) (Mat k n) (Mat m n) where
   run := Mat.gemm
 
+/-- `α * Aᵀ * B + β * C` is `gemmTN`. -/
+public instance {m k n : Nat} : MulAdd Float32 (Transpose (Mat k m)) (Mat k n) (Mat m n) where
+  run α A B β C := Mat.gemmTN α A.mat B β C
+
+/-- `α * A * Bᵀ + β * C` is `gemmNT`. -/
+public instance {m k n : Nat} : MulAdd Float32 (Mat m k) (Transpose (Mat n k)) (Mat m n) where
+  run α A B β C := Mat.gemmNT α A B.mat β C
+
+/-- `α * Aᵀ * Bᵀ + β * C` is `gemmTT`. -/
+public instance {m k n : Nat} :
+    MulAdd Float32 (Transpose (Mat k m)) (Transpose (Mat n k)) (Mat m n) where
+  run α A B β C := Mat.gemmTT α A.mat B.mat β C
+
+/-- `α * x + β * y` is `axpby`. -/
+public instance {n : Nat} : Axpby Float32 (Vec n) where
+  run := Vec.axpby
+
 /-- `α * x + y` is `axpy`. -/
 public instance {n : Nat} : Axpy Float32 (Vec n) where
   run := Vec.axpy
@@ -156,6 +163,19 @@ variable {m k n : Nat} {uplo : Uplo} {d : Diag}
 
 @[simp] public theorem mulAdd_mat_mat (α : Float32) (A : Mat m k) (B : Mat k n) (β : Float32)
     (C : Mat m n) : MulAdd.run α A B β C = Mat.gemm α A B β C := rfl
+
+@[simp] public theorem mulAdd_transpose_mat (α : Float32) (A : Mat k m) (B : Mat k n) (β : Float32)
+    (C : Mat m n) : MulAdd.run α (Transpose.mk A) B β C = Mat.gemmTN α A B β C := rfl
+
+@[simp] public theorem mulAdd_mat_transpose (α : Float32) (A : Mat m k) (B : Mat n k) (β : Float32)
+    (C : Mat m n) : MulAdd.run α A (Transpose.mk B) β C = Mat.gemmNT α A B β C := rfl
+
+@[simp] public theorem mulAdd_transpose_transpose (α : Float32) (A : Mat k m) (B : Mat n k)
+    (β : Float32) (C : Mat m n) :
+    MulAdd.run α (Transpose.mk A) (Transpose.mk B) β C = Mat.gemmTT α A B β C := rfl
+
+@[simp] public theorem axpby_vec (α : Float32) (x : Vec n) (β : Float32) (y : Vec n) :
+    Axpby.run α x β y = Vec.axpby α x β y := rfl
 
 @[simp] public theorem axpy_vec (α : Float32) (x y : Vec n) : Axpy.run α x y = Vec.axpy α x y :=
   rfl

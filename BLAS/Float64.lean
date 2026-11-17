@@ -16,7 +16,13 @@ public import BLAS.Float64.Syrk
 public import BLAS.Float64.Level3
 public import BLAS.Float64.GemmBlocked
 public import BLAS.Float64.Gemm
+public import BLAS.Float64.GemmT
+public import BLAS.Float64.TrsvT
+public import BLAS.Float64.Trmv
 public import BLAS.Float64.Trsm
+public import BLAS.Float64.TrsmT
+public import BLAS.Float64.Trmm
+public import BLAS.Float64.TrmmRight
 public import BLAS.Float64.View
 
 /-!

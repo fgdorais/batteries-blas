@@ -177,6 +177,11 @@ def rows (rounds n : Nat) : IO (List Row) := do
     for _ in [0:reps] do
       z := refAxpy 0.5 x z
     return z[0]!
+  let axpby ← time rounds n fun _ => Id.run do
+    let mut z := v
+    for _ in [0:reps] do
+      z := BLAS.Float32.Vec.axpby 0.5 v 0.5 z
+    return z.data[0]!
   let scal ← time rounds n fun _ => Id.run do
     let mut z := v
     for _ in [0:reps] do
@@ -224,7 +229,7 @@ def rows (rounds n : Nat) : IO (List Row) := do
       z := BLAS.Float32.Vec.axpy 0.5 v2 z
     return z.data[0]!
   let dot2 ← time rounds n fun _ => BLAS.Float32.Vec.dot v2 v2
-  return [⟨s!"axpy ×{reps}", axpy, some axpy'⟩,
+  return [⟨s!"axpy ×{reps}", axpy, some axpy'⟩, ⟨s!"axpby ×{reps} / axpy", axpby, some axpy⟩,
     ⟨s!"scal ×{reps}", scal, some scal'⟩, ⟨s!"copy ×{reps}", copy, none⟩,
     ⟨s!"rot ×{reps}", rot, some rot'⟩, ⟨"dot", dot, some dot'⟩, ⟨"asum", asum, some asum'⟩,
     ⟨"nrm2", nrm2, some nrm2'⟩,
@@ -237,9 +242,9 @@ def mat (m s : Nat) : BLAS.Float32.Mat m m :=
   .ofFn fun i j => ((i.val * 7 + j.val * 13 + s) % 11).toFloat32 - 5
 
 /--
-The `gemm` benchmarks for `m × m` matrices: the rows of `gemmNaive` and `gemm`, and their
-floating-point operations. Each timed call depends on its argument, which is `m`, so that the
-compiler can't hoist it out of the timing loop.
+The `gemm` benchmarks for `m × m` matrices: the rows of `gemmNaive`, `gemm` and the transposed
+`gemm`s, and their floating-point operations. Each timed call depends on its argument, which is
+`m`, so that the compiler can't hoist it out of the timing loop.
 -/
 def gemmRows (rounds m : Nat) : IO (List Row × Nat) := do
   let A := mat m 1
@@ -257,13 +262,19 @@ def gemmRows (rounds m : Nat) : IO (List Row × Nat) := do
   let B₁ := ld B
   let C₁ := ld C
   let tl ← time rounds m fun q => (BLAS.Float32.Mat.gemm (α q) A₁ B₁ 0.5 C₁).data[0]!
+  let ttn ← time rounds m fun q => (BLAS.Float32.Mat.gemmTN (α q) A B 0.5 C).data[0]!
+  let tnt ← time rounds m fun q => (BLAS.Float32.Mat.gemmNT (α q) A B 0.5 C).data[0]!
+  let ttt ← time rounds m fun q => (BLAS.Float32.Mat.gemmTT (α q) A B 0.5 C).data[0]!
   return ([⟨s!"gemmNaive {m}", t, some t'⟩, ⟨s!"gemm {m}", tb, some t'⟩,
-    ⟨s!"gemm {m}, ld = {m} + 8 / ld = {m}", tl, some tb⟩], 2 * m * m * m)
+    ⟨s!"gemm {m}, ld = {m} + 8 / ld = {m}", tl, some tb⟩,
+    ⟨s!"gemmTN {m} / gemm", ttn, some tb⟩, ⟨s!"gemmNT {m} / gemm", tnt, some tb⟩,
+    ⟨s!"gemmTT {m} / gemm", ttt, some tb⟩], 2 * m * m * m)
 
 /--
 The Level 2 benchmarks for `m × m` matrices, ten calls per round: `gemv`, `gemvT` and `ger`, on
-packed operands, `gemv` with `x` and `y` at stride 2, and `trsv` on both triangles. Each makes
-`2 * m * m` floating-point operations per call, except `trsv`, which makes about `m * m`.
+packed operands, `gemv` with `x` and `y` at stride 2, and `trsv`, `trsvT`, `trmv` and `trmvT` on
+both triangles. Each makes `2 * m * m` floating-point operations per call, except the triangular
+ones, which make about `m * m`.
 -/
 def level2Rows (rounds m : Nat) : IO (List Row × Nat) := do
   let A := mat m 1
@@ -303,15 +314,52 @@ def level2Rows (rounds m : Nat) : IO (List Row × Nat) := do
     for _ in [0:reps] do
       y := BLAS.Float32.Mat.trsv .upper .nonUnit T y
     return y.data[0]!
+  let tlT ← time rounds m fun q => Id.run do
+    let mut y := BLAS.Float32.Vec.scal (α q) x
+    for _ in [0:reps] do
+      y := BLAS.Float32.Mat.trsvT .lower .nonUnit T y
+    return y.data[0]!
+  let tuT ← time rounds m fun q => Id.run do
+    let mut y := BLAS.Float32.Vec.scal (α q) x
+    for _ in [0:reps] do
+      y := BLAS.Float32.Mat.trsvT .upper .nonUnit T y
+    return y.data[0]!
+  let tlM ← time rounds m fun q => Id.run do
+    let mut y := BLAS.Float32.Vec.scal (α q) x
+    for _ in [0:reps] do
+      y := BLAS.Float32.Mat.trmv .lower .nonUnit T y
+    return y.data[0]!
+  let tuM ← time rounds m fun q => Id.run do
+    let mut y := BLAS.Float32.Vec.scal (α q) x
+    for _ in [0:reps] do
+      y := BLAS.Float32.Mat.trmv .upper .nonUnit T y
+    return y.data[0]!
+  let tlMT ← time rounds m fun q => Id.run do
+    let mut y := BLAS.Float32.Vec.scal (α q) x
+    for _ in [0:reps] do
+      y := BLAS.Float32.Mat.trmvT .lower .nonUnit T y
+    return y.data[0]!
+  let tuMT ← time rounds m fun q => Id.run do
+    let mut y := BLAS.Float32.Vec.scal (α q) x
+    for _ in [0:reps] do
+      y := BLAS.Float32.Mat.trmvT .upper .nonUnit T y
+    return y.data[0]!
   return ([⟨s!"gemv {m} ×{reps}", tv, none⟩, ⟨s!"gemvT {m} ×{reps}", tt, none⟩,
     ⟨s!"ger {m} ×{reps}", tg, none⟩, ⟨s!"gemv {m} ×{reps}, stride 2 / stride 1", tv2, some tv⟩,
-    ⟨s!"trsv lower {m} ×{reps}", tl, none⟩, ⟨s!"trsv upper {m} ×{reps}", tu, none⟩],
+    ⟨s!"trsv lower {m} ×{reps}", tl, none⟩, ⟨s!"trsv upper {m} ×{reps}", tu, none⟩,
+    ⟨s!"trsvT lower {m} ×{reps} / trsv", tlT, some tl⟩,
+    ⟨s!"trsvT upper {m} ×{reps} / trsv", tuT, some tu⟩,
+    ⟨s!"trmv lower {m} ×{reps} / trsv", tlM, some tl⟩,
+    ⟨s!"trmv upper {m} ×{reps} / trsv", tuM, some tu⟩,
+    ⟨s!"trmvT lower {m} ×{reps} / trsv", tlMT, some tl⟩,
+    ⟨s!"trmvT upper {m} ×{reps} / trsv", tuMT, some tu⟩],
     2 * m * m * reps)
 
 /--
-The `syrk` and `trsm` benchmarks for `m × m` matrices: `syrk` and `syrkT` on the lower triangle,
-`trsm` on the lower triangle and `trsmRight` on the upper one, with a non-unit diagonal. Each makes
-about `m * m * m` floating-point operations per call. As for `gemm`, each call copies the shared
+The `syrk`, `trsm` and `trmm` benchmarks for `m × m` matrices: `syrk` and `syrkT` on the lower
+triangle, `trsm`, `trsmT`, `trmm` and `trmmT` on the lower triangle and `trsmRight`, `trsmRightT`,
+`trmmRight` and `trmmRightT` on the upper one, with a non-unit diagonal. Each makes about
+`m * m * m` floating-point operations per call. As for `gemm`, each call copies the shared
 `C` or `B` first.
 -/
 def level3Rows (rounds m : Nat) : IO (List Row × Nat) := do
@@ -325,11 +373,26 @@ def level3Rows (rounds m : Nat) : IO (List Row × Nat) := do
   let tt ← time rounds m fun q => (BLAS.Float32.Mat.syrkT .lower (α q) A 0.5 C).data[0]!
   let tl ← time rounds m fun q => (BLAS.Float32.Mat.trsm .lower .nonUnit (α q) T C).data[0]!
   let tr ← time rounds m fun q => (BLAS.Float32.Mat.trsmRight .upper .nonUnit (α q) T C).data[0]!
+  let tlT ← time rounds m fun q => (BLAS.Float32.Mat.trsmT .lower .nonUnit (α q) T C).data[0]!
+  let trT ← time rounds m fun q =>
+    (BLAS.Float32.Mat.trsmRightT .upper .nonUnit (α q) T C).data[0]!
+  let tm ← time rounds m fun q => (BLAS.Float32.Mat.trmm .lower .nonUnit (α q) T C).data[0]!
+  let tmr ← time rounds m fun q =>
+    (BLAS.Float32.Mat.trmmRight .upper .nonUnit (α q) T C).data[0]!
+  let tmT ← time rounds m fun q => (BLAS.Float32.Mat.trmmT .lower .nonUnit (α q) T C).data[0]!
+  let tmrT ← time rounds m fun q =>
+    (BLAS.Float32.Mat.trmmRightT .upper .nonUnit (α q) T C).data[0]!
   return ([⟨s!"syrk lower {m}", ts, none⟩, ⟨s!"syrkT lower {m}", tt, none⟩,
-    ⟨s!"trsm lower {m}", tl, none⟩, ⟨s!"trsmRight upper {m}", tr, none⟩], m * m * m)
+    ⟨s!"trsm lower {m}", tl, none⟩, ⟨s!"trsmRight upper {m}", tr, none⟩,
+    ⟨s!"trsmT lower {m} / trsm", tlT, some tl⟩,
+    ⟨s!"trsmRightT upper {m} / trsmRight", trT, some tr⟩,
+    ⟨s!"trmm lower {m} / trsm", tm, some tl⟩,
+    ⟨s!"trmmRight upper {m} / trsmRight", tmr, some tr⟩,
+    ⟨s!"trmmT lower {m} / trsm", tmT, some tl⟩,
+    ⟨s!"trmmRightT upper {m} / trsmRight", tmrT, some tr⟩], m * m * m)
 
 /--
-All the benchmarks: Level 1, Level 2, `gemm`, and `syrk` and `trsm`, each with its floating-point
+All the benchmarks: Level 1, Level 2, `gemm`, and `syrk`, `trsm` and `trmm`, each with its floating-point
 operations.
 -/
 public def all (rounds n : Nat) :

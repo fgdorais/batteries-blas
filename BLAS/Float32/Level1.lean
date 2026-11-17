@@ -11,8 +11,8 @@ public import ScalarArray.Notation
 /-!
 # Level 1
 
-Vector operations: the updates `axpy`, `scal`, `copy` and `swap`, and the reductions `dot`, `asum`,
-`nrm2` and `iamax`.
+Vector operations: the updates `axpy`, `axpby`, `scal`, `copy` and `swap`, and the reductions
+`dot`, `asum`, `nrm2` and `iamax`.
 
 Each routine runs a loop over the `USize` indices `off + inc * i` of its vectors when their arrays'
 sizes fit in a `USize`, as they do for every array in memory, and its model otherwise, so that its
@@ -131,6 +131,7 @@ public theorem data_axpy (α : Float32) (x y : Vec n) :
     getElem!_pos x.data (x.off + x.inc * i) (x.index_lt h)]
   rfl
 
+
 /-- The array of `scal`. -/
 public def scalData (α : Float32) (x : Vec n) : Float32Array :=
   if hs : x.data.size < USize.size then
@@ -209,6 +210,141 @@ public theorem scalBetaData_eq (β : Float32) (x : Vec n) :
     · simp only [Tail.run_done, x.toNat_toUSize hs, USize.toNat_zero]
     · intro _ _ _ _; rfl
   · rfl
+
+/-! ## `axpby` -/
+
+/-- The array of `axpby` when `β = 0`: `y` set to `α * x`, without reading `y`. -/
+public def axpbyZeroData (α : Float32) (x y : Vec n) : Float32Array :=
+  if hs : x.data.size < USize.size ∧ y.data.size < USize.size then
+    let nu := n.toUSize
+    have hnu : nu.toNat = n := y.toNat_toUSize hs.2
+    let a := y.data
+    let o := y.off.toUSize
+    let c := y.inc.toUSize
+    let xo := x.off.toUSize
+    let xc := x.inc.toUSize
+    (inplace a do
+      for k in 0...nu do
+        have hk : (o + c * k).toNat < a.size := y.toNat_index_lt hs.2 (by lia)
+        a[o + c * k] := α * x.uget xo xc rfl rfl hs.1 k (by lia)).2
+  else y.data.modifyAt y.stride.idx 0 n fun i _ => α * x.data[x.off + x.inc * i]!
+
+public theorem axpbyZeroData_eq (α : Float32) (x y : Vec n) :
+    axpbyZeroData α x y = y.data.modifyAt y.stride.idx 0 n
+      fun i _ => α * x.data[x.off + x.inc * i]! := by
+  unfold axpbyZeroData
+  split
+  · rename_i hs
+    have he := y.loop_idx hs.2
+    simp only [runInPlaceThenOf_eq, Tail.forIn_eq]
+    rw [Tail.run_forInFrom_write (G := fun i => α * x.data[x.off + x.inc * i]!) (he := he)]
+    · simp only [Tail.run_done, y.toNat_toUSize hs.2, USize.toNat_zero]
+    · intro j _ hj
+      rw [y.toNat_toUSize hs.2] at hj
+      rw [getElem!_pos x.data (x.off + x.inc * j.toNat) (x.index_lt hj)]
+      simp [getElem_def]
+  · rfl
+
+/-- The array of `axpby` when `α ≠ 0` and `β ≠ 0`: `y` set to `α * x + β * y`. -/
+public def axpbyData (α : Float32) (x : Vec n) (β : Float32) (y : Vec n) : Float32Array :=
+  if hs : x.data.size < USize.size ∧ y.data.size < USize.size then
+    let nu := n.toUSize
+    have hnu : nu.toNat = n := y.toNat_toUSize hs.2
+    let a := y.data
+    let o := y.off.toUSize
+    let c := y.inc.toUSize
+    let xo := x.off.toUSize
+    let xc := x.inc.toUSize
+    (inplace a do
+      for k in 0...nu do
+        have hk : (o + c * k).toNat < a.size := y.toNat_index_lt hs.2 (by lia)
+        a[o + c * k] := α * x.uget xo xc rfl rfl hs.1 k (by lia) + β * a[o + c * k]).2
+  else y.data.modifyAt y.stride.idx 0 n fun i v => α * x.data[x.off + x.inc * i]! + β * v
+
+public theorem axpbyData_eq (α : Float32) (x : Vec n) (β : Float32) (y : Vec n) :
+    axpbyData α x β y = y.data.modifyAt y.stride.idx 0 n
+      fun i v => α * x.data[x.off + x.inc * i]! + β * v := by
+  unfold axpbyData
+  split
+  · rename_i hs
+    have he := y.loop_idx hs.2
+    simp only [runInPlaceThenOf_eq, Tail.forIn_eq]
+    rw [Tail.run_forInFrom_modify (G := fun i v => α * x.data[x.off + x.inc * i]! + β * v)
+      (he := he)]
+    · simp only [Tail.run_done, y.toNat_toUSize hs.2, USize.toNat_zero]
+    · intro j _ hj v
+      rw [y.toNat_toUSize hs.2] at hj
+      rw [getElem!_pos x.data (x.off + x.inc * j.toNat) (x.index_lt hj)]
+      simp [getElem_def]
+  · rfl
+
+/--
+The value of `axpby α x β y` at an element, from the elements `u` of `x` and `v` of `y`, with the
+special cases of OpenBLAS's `daxpby`: `betaMul β v` when `α = 0`, without reading `u`, and
+`α * u` when `β = 0`, without reading `v`.
+-/
+@[expose] public def axpbyAt (α β u v : Float32) : Float32 :=
+  if α == 0 then betaMul β v else if β == 0 then α * u else α * u + β * v
+
+/--
+`axpby α x β y` is `α * x + β * y`. It is not a routine of the reference BLAS, but of the BLAS
+Technical Forum standard and of OpenBLAS, whose `daxpby` it follows, special cases included: when
+`α = 0`, it scales `y` by `β`, or sets it to `0` when `β = 0`, without reading `x`; when `β = 0`, it
+sets `y` to `α * x` without reading `y`. So an infinity or a `NaN` in the operand that is not read
+doesn't reach `y`. It updates `y` in place when its array is not shared, and leaves the elements
+of the array outside `y` unchanged.
+-/
+@[expose] public def axpby (α : Float32) (x : Vec n) (β : Float32) (y : Vec n) : Vec n :=
+  if α == 0 then
+    { data := y.scalBetaData β
+      off := y.off
+      inc := y.inc
+      inc_pos := y.inc_pos
+      bound := by rw [scalBetaData_eq, size_modifyAt]; exact y.bound }
+  else if β == 0 then
+    { data := axpbyZeroData α x y
+      off := y.off
+      inc := y.inc
+      inc_pos := y.inc_pos
+      bound := by rw [axpbyZeroData_eq, size_modifyAt]; exact y.bound }
+  else
+    { data := axpbyData α x β y
+      off := y.off
+      inc := y.inc
+      inc_pos := y.inc_pos
+      bound := by rw [axpbyData_eq, size_modifyAt]; exact y.bound }
+
+/-- The array of `axpby α x β y` is the array of `y` with its elements updated. -/
+public theorem data_axpby (α : Float32) (x : Vec n) (β : Float32) (y : Vec n) :
+    (axpby α x β y).data = y.data.modifyAt y.stride.idx 0 n
+      fun i v => axpbyAt α β x.data[x.off + x.inc * i]! v := by
+  unfold axpby
+  cases hα : α == 0
+  · cases hβ : β == 0
+    · simp only [Bool.false_eq_true, ↓reduceIte, axpbyData_eq]
+      exact modifyAt_congr_fun _ _ fun i v _ _ => by simp [axpbyAt, hα, hβ]
+    · simp only [Bool.false_eq_true, ↓reduceIte, axpbyZeroData_eq]
+      exact modifyAt_congr_fun _ _ fun i v _ _ => by simp [axpbyAt, hα, hβ]
+  · simp only [↓reduceIte, scalBetaData_eq]
+    exact modifyAt_congr_fun _ _ fun i v _ _ => by simp [axpbyAt, hα]
+
+@[simp] public theorem off_axpby (α : Float32) (x : Vec n) (β : Float32) (y : Vec n) :
+    (axpby α x β y).off = y.off := by
+  unfold axpby; split <;> (try split) <;> rfl
+
+@[simp] public theorem inc_axpby (α : Float32) (x : Vec n) (β : Float32) (y : Vec n) :
+    (axpby α x β y).inc = y.inc := by
+  unfold axpby; split <;> (try split) <;> rfl
+
+/--
+Element `i` of `axpby α x β y` is `betaMul β y[i]` when `α = 0`, `α * x[i]` when `β = 0`, and
+`α * x[i] + β * y[i]` otherwise.
+-/
+@[simp] public theorem getElem_axpby (α : Float32) (x : Vec n) (β : Float32) (y : Vec n) (i : Nat)
+    (h : i < n) : (axpby α x β y)[i] = axpbyAt α β x[i] y[i] := by
+  rw [getElem_of_data_eq_modifyAt _ (data_axpby α x β y) (off_axpby α x β y)
+    (inc_axpby α x β y) i h, getElem!_pos x.data (x.off + x.inc * i) (x.index_lt h)]
+  rfl
 
 /--
 The array of `copy`: a single `memmove` for contiguous vectors, and a loop over the strides
