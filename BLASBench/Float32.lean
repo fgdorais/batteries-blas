@@ -242,8 +242,9 @@ def mat (m s : Nat) : BLAS.Float32.Mat m m :=
   .ofFn fun i j => ((i.val * 7 + j.val * 13 + s) % 11).toFloat32 - 5
 
 /--
-The `gemm` benchmarks for `m × m` matrices: the rows of `gemmNaive`, `gemm` and the transposed
-`gemm`s, and their floating-point operations. Each timed call depends on its argument, which is
+The `gemm` benchmarks for `m × m` matrices: the rows of `gemmNaive`, `gemm`, the transposed
+`gemm`s, and `gemmtr` and `gemmtrTN` on the lower triangle, and the floating-point operations of
+`gemm`. Each timed call depends on its argument, which is
 `m`, so that the compiler can't hoist it out of the timing loop.
 -/
 def gemmRows (rounds m : Nat) : IO (List Row × Nat) := do
@@ -265,10 +266,15 @@ def gemmRows (rounds m : Nat) : IO (List Row × Nat) := do
   let ttn ← time rounds m fun q => (BLAS.Float32.Mat.gemmTN (α q) A B 0.5 C).data[0]!
   let tnt ← time rounds m fun q => (BLAS.Float32.Mat.gemmNT (α q) A B 0.5 C).data[0]!
   let ttt ← time rounds m fun q => (BLAS.Float32.Mat.gemmTT (α q) A B 0.5 C).data[0]!
+  let ttr ← time rounds m fun q => (BLAS.Float32.Mat.gemmtr .lower (α q) A B 0.5 C).data[0]!
+  let ttrT ← time rounds m fun q =>
+    (BLAS.Float32.Mat.gemmtrTN .lower (α q) A B 0.5 C).data[0]!
   return ([⟨s!"gemmNaive {m}", t, some t'⟩, ⟨s!"gemm {m}", tb, some t'⟩,
     ⟨s!"gemm {m}, ld = {m} + 8 / ld = {m}", tl, some tb⟩,
     ⟨s!"gemmTN {m} / gemm", ttn, some tb⟩, ⟨s!"gemmNT {m} / gemm", tnt, some tb⟩,
-    ⟨s!"gemmTT {m} / gemm", ttt, some tb⟩], 2 * m * m * m)
+    ⟨s!"gemmTT {m} / gemm", ttt, some tb⟩,
+    ⟨s!"gemmtr lower {m}, half the operations / gemm", ttr, some tb⟩,
+    ⟨s!"gemmtrTN lower {m}, half the operations / gemmTN", ttrT, some ttn⟩], 2 * m * m * m)
 
 /--
 The Level 2 benchmarks for `m × m` matrices, ten calls per round: `gemv`, `gemvT` and `ger`, on
