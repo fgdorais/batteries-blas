@@ -44,6 +44,12 @@ Changes that would reorder them, such as partial sums in `dot`, `asum` and `nrm2
 - [ ] `trsmRightT`: fuse the solve of a column with the subtractions from the columns still to
   solve, as `trsmRight` does. It is 6× slower than `trsmRight` at 256, 4.2× at 512 and 2× at 1024
   (1.6–3.4 GFLOP/s), since each element reads a row of `A` with a stride.
+- [ ] `trmm`, `trmmRight`, `trmmRightT`: four columns of `B` at a time, as `trsm` does, or four
+  added columns per pass over the rows, as `gemv` adds four columns. Each element keeps its order
+  of operations. They run at 1–1.9× the time of `trsm` and `trsmRight` (4.5–8.2 GFLOP/s at
+  256–1024), one column at a time.
+- [ ] `trmmT`: four columns at a time, which share the reads of `A`, each with its dot products in
+  their order. It runs at 2.2–3.3× the time of `trsm` (2.8–4.2 GFLOP/s), like `trsmT`.
 - [ ] `trsm`, `trsmRight`: update the rest of `B` by the `gemm` kernel after each block of solved
   rows or columns. This changes the order of the updates of an element only if the blocks reorder
   its terms, so it needs care to stay exact.
