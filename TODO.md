@@ -50,6 +50,9 @@ Changes that would reorder them, such as partial sums in `dot`, `asum` and `nrm2
   256–1024), one column at a time.
 - [ ] `trmmT`: four columns at a time, which share the reads of `A`, each with its dot products in
   their order. It runs at 2.2–3.3× the time of `trsm` (2.8–4.2 GFLOP/s), like `trsmT`.
+- [ ] `symm`, `symmRight`: as `trmm` and `trmmRight`, four columns of `C` at a time, or four added
+  columns of `B` per pass over the rows of a column of `C`. Each element keeps its order of
+  operations. They run at 5.4–7.8 GFLOP/s at 256–1024, one column at a time. Not measured yet.
 - [ ] `trsm`, `trsmRight`: update the rest of `B` by the `gemm` kernel after each block of solved
   rows or columns. This changes the order of the updates of an element only if the blocks reorder
   its terms, so it needs care to stay exact.

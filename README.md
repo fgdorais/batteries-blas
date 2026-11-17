@@ -7,10 +7,10 @@ Basic Linear Algebra Subprograms written entirely in Lean 4, on the unboxed arra
 The routines come with proved specifications; their speed is measured, not promised.
 
 It has, on `Float64` and `Float32`, the BLAS Level 1 routines on strided vectors, `gemv`, `ger`,
-`symv` and `trsv`, `trmv` (with their transposed forms), and `gemm`, `syrk`, `trsm` and `trmm`
-(with theirs) on matrices with an offset and a leading dimension, as well as the mixed-precision
-`dsdot` and `sdsdot`. The `Float32` routines are in `BLAS.Float32`, with the same names and
-specifications as those of `BLAS.Float64`, on `Float32Array`.
+`symv` and `trsv`, `trmv` (with their transposed forms), and `gemm`, `syrk`, `trsm` and `trmm` (with
+theirs) and `symm` on matrices with an offset and a leading dimension, as well as the
+mixed-precision `dsdot` and `sdsdot`. The `Float32` routines are in `BLAS.Float32`, with the same
+names and specifications as those of `BLAS.Float64`, on `Float32Array`.
 
 ## Usage
 
@@ -169,6 +169,8 @@ when its array is not shared, and leave the elements outside the result unchange
 | `trmmRight uplo diag α A B` | `α * B * A` for a triangular `A`, over `B` | `getElem_trmmRight_upper`, `getElem_trmmRight_lower` |
 | `trmmT uplo diag α A B` | `α * Aᵀ * B` for a triangular `A`, over `B` | `getElem_trmmT_upper`, `getElem_trmmT_lower` |
 | `trmmRightT uplo diag α A B` | `α * B * Aᵀ` for a triangular `A`, over `B` | `getElem_trmmRightT_upper`, `getElem_trmmRightT_lower` |
+| `symm uplo α A B β C` | `α * A * B + β * C` for a symmetric `A`, over `C` | `getElem_symm_upper`, `getElem_symm_lower` |
+| `symmRight uplo α A B β C` | `α * B * A + β * C` for a symmetric `A`, over `C` | `getElem_symmRight_upper`, `getElem_symmRight_lower` |
 
 As in the reference `dsyrk`, `syrk` and `syrkT` only scale the triangle when `α = 0`, `syrk` skips
 the terms with `A[j, l] = 0`, so that an infinity or a `NaN` in `A` doesn't reach them, and `syrkT`
@@ -194,6 +196,15 @@ it by `α * A[j, j]` (by `α` for a unit diagonal), and add `α * A[k, j] * B[i,
 columns `j` in an order where the columns they read are still those of `B`, so each element gets
 the operations of `dtrmm` in the same order. As in `dtrmm`, `trmmRightT` skips the scaling when
 its factor is `1`.
+
+`symm` and `symmRight` are the cases of the reference `dsymm`, and read only the triangle `uplo` of
+`A`. As there, they only scale `C` by `β` when `α = 0` (setting it to `0` when `β = 0`), and
+otherwise scale each element by `β` when they first reach it, without reading `C` when `β = 0`.
+`symm` computes each column of `C` by the loops of `symv`: each element gets `β * C[i, j]`, then
+`α * B[i, j] * A[i, i]` and `α` times the dot product of its column of the triangle with `B[:, j]`,
+then the terms `α * B[k, j] * A[i, k]` from the rows reached after it. `symmRight` computes one
+column of `C` at a time: `β * C[i, j] + α * A[j, j] * B[i, j]`, then `α * A[k, j] * B[i, k]` for
+the other columns `k` in increasing order, reading `A[k, j]` from the triangle.
 
 `BLAS.Float32.Vec.dsdot x y` is the dot product of two `Float32` vectors, accumulated in `Float64`
 from the products of the elements converted to `Float64`, and `sdsdot sb x y` adds it to `sb` in

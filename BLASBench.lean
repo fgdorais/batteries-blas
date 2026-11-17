@@ -74,14 +74,16 @@ public def main (args : List String) : IO Unit := do
         IO.println s!"| {m} | {g r.time} | {g rb.time} | {g rl.time} | {g tn.time} | {g nt.time} \
           | {g tt.time} | {(r.ref.map g).getD "—"} |"
       | _ => pure ()
-    IO.println "\n`syrk`, `trsm` and `trmm` of square matrices, in GFLOP/s.\n"
-    IO.println "| Size | syrk, lower | syrkT, lower | trsm, lower | trsmRight, upper | trsmT, lower \
-      | trsmRightT, upper | trmm, lower | trmmRight, upper | trmmT, lower | trmmRightT, upper |"
-    IO.println "|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|"
+    IO.println "\n`syrk`, `trsm`, `trmm` and `symm` of square matrices, in GFLOP/s.\n"
+    IO.println "| Size | syrk, lower | syrkT, lower | trsm, lower | trsmRight, upper \
+      | trsmT, lower | trsmRightT, upper | trmm, lower | trmmRight, upper | trmmT, lower \
+      | trmmRightT, upper | symm, lower | symmRight, upper |"
+    IO.println "|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|"
     for (rs, flops) in level3, m in level3Sizes do
       let g (t : Float) := fmt (flops.toFloat / (t * 1e6))
       match rs with
-      | [s, t, l, r, lT, rT, ml, mr, mlT, mrT] =>
+      | [s, t, l, r, lT, rT, ml, mr, mlT, mrT, sm, smr] =>
         IO.println s!"| {m} | {g s.time} | {g t.time} | {g l.time} | {g r.time} | {g lT.time} \
-          | {g rT.time} | {g ml.time} | {g mr.time} | {g mlT.time} | {g mrT.time} |"
+          | {g rT.time} | {g ml.time} | {g mr.time} | {g mlT.time} | {g mrT.time} \
+          | {g (sm.time / 2)} | {g (smr.time / 2)} |"
       | _ => pure ()

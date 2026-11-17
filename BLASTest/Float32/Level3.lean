@@ -11,7 +11,7 @@ meta import BLASTest.Util
 
 /-!
 Tests for `gemm`, `gemmTN`, `gemmNT`, `gemmTT`, `syrk`, `syrkT`, `trsm`, `trsmRight`, `trsmT`,
-`trsmRightT`, `trmm`, `trmmT`, `trmmRight` and `trmmRightT` on `Float32`.
+`trsmRightT`, `trmm`, `trmmT`, `trmmRight`, `trmmRightT`, `symm` and `symmRight` on `Float32`.
 -/
 
 open BLAS.Float32
@@ -811,3 +811,124 @@ def trmmInPlace (n : Nat) : Bool :=
     BLASTest.addr (Mat.trmmRightT .lower .nonUnit 2 (triM n) B'').data == r
 
 #guard trmmInPlace 8
+
+/-! ## `symm` and `symmRight` -/
+
+/-- The loops of the reference BLAS for `symm`, with `side = 'L'` (or `'R'` when `right`). -/
+def symmRef (right : Bool) (uplo : Uplo) (α : Float32) (A : Mat k k) (B : Mat m n) (β : Float32)
+    (C : Mat m n) : List Float32 := Id.run do
+  let mut c := C.toList.toArray
+  if m == 0 || n == 0 || (α == 0 && β == 1) then return c.toList
+  if α == 0 then
+    return c.toList.map fun v => if β == 0 then 0 else β * v
+  let a (i j : Nat) := A[(i, j)]?.getD 0
+  let b (i j : Nat) := B[(i, j)]?.getD 0
+  if !right then
+    for j in List.range n do
+      let rows := match uplo with
+        | .upper => List.range m
+        | .lower => (List.range m).reverse
+      for i in rows do
+        let t1 := α * b i j
+        let mut t2 := 0
+        let ks := match uplo with
+          | .upper => List.range i
+          | .lower => (List.range m).filter (i < ·)
+        for k in ks do
+          c := c.set! (k + m * j) (c[k + m * j]! + t1 * a k i)
+          t2 := t2 + b k j * a k i
+        if β == 0 then c := c.set! (i + m * j) (t1 * a i i + α * t2)
+        else c := c.set! (i + m * j) (β * c[i + m * j]! + t1 * a i i + α * t2)
+  else
+    for j in List.range n do
+      let t1 := α * a j j
+      for i in List.range m do
+        if β == 0 then c := c.set! (i + m * j) (t1 * b i j)
+        else c := c.set! (i + m * j) (β * c[i + m * j]! + t1 * b i j)
+      for k in List.range j do
+        let t := match uplo with
+          | .upper => α * a k j
+          | .lower => α * a j k
+        for i in List.range m do c := c.set! (i + m * j) (c[i + m * j]! + t * b i k)
+      for k in (List.range n).filter (j < ·) do
+        let t := match uplo with
+          | .upper => α * a j k
+          | .lower => α * a k j
+        for i in List.range m do c := c.set! (i + m * j) (c[i + m * j]! + t * b i k)
+  return c.toList
+
+/-- The elements of `mat m n s` divided by `3`. -/
+def matThirds (m n : Nat) (s : Nat := 0) : Mat m n :=
+  .ofFn fun i j => (mat m n s)[(i.val, j.val)] / 3
+
+/-- The matrix `A` at the offset `3` with the leading dimension `m + 2`, in an array of
+`1e9 + 0.5`. -/
+def ldOf' (A : Mat m n) : Mat m n :=
+  (Mat.ofLd? (Mat.ofFn (m := m + 2) (n := n) fun i j =>
+    if h : i.val < m then A[(i.val, j.val)]'⟨h, j.isLt⟩ else 1e9 + 0.5).data 0 (m + 2)).getD A
+
+/--
+Whether `symm` and `symmRight` match the reference loops bit for bit, on packed operands and on
+operands with offsets and leading dimensions, don't read the other triangle of `A`, nor `C` when
+`β = 0`, and leave the rest of `C`'s array unchanged.
+-/
+def symmMatches (m n : Nat) (uplo : Uplo) (α β : Float32) : Bool :=
+  let A := thirds (triM m 1 0 uplo)
+  let A' := thirds (triM n 1 0 uplo)
+  let B := matThirds m n 2
+  let C := matThirds m n 3
+  let nan : Float32 := 0 / 0
+  let C' := if β == 0 then ldOf' (Mat.ofFn (m := m) (n := n) fun _ _ => nan) else ldOf' C
+  let N := ldOf (thirds (withNaNs uplo .nonUnit m))
+  let N' := ldOf (thirds (withNaNs uplo .nonUnit n))
+  let X := Mat.symm uplo α N (ldOf' B) β C'
+  let Y := Mat.symmRight uplo α N' (ldOf' B) β C'
+  let r := symmRef false uplo α A B β C
+  let s := symmRef true uplo α A' B β C
+  bits (Mat.symm uplo α A B β C) == listBits r && bits (Mat.symmRight uplo α A' B β C) ==
+    listBits s && bits X == listBits r && bits Y == listBits s &&
+    outside X == outside C' && outside Y == outside C'
+
+#guard [Uplo.lower, .upper].all fun u =>
+  symmMatches 5 3 u 1.5 0.5 && symmMatches 1 1 u 2 0 && symmMatches 17 9 u (-0.25) 1 &&
+    symmMatches 40 33 u 1 (1 / 7) && symmMatches 0 3 u 1 1 && symmMatches 3 0 u 1 1 &&
+    symmMatches 6 4 u (1 / 3) 0 && symmMatches 9 12 u 0.7 (-2)
+
+-- `α = 0` only scales `C`, without reading `A` or `B`, nor `C` when `β = 0`.
+#guard
+  let nan : Float32 := 0 / 0
+  let N : Mat 2 2 := .ofFn fun _ _ => nan
+  let C : Mat 2 2 := .ofFn fun i j => (i.val + 2 * j.val).toFloat32
+  (Mat.symm .lower 0 N N 0 N).toList == [0, 0, 0, 0] &&
+    (Mat.symmRight .upper 0 N N 0 N).toList == [0, 0, 0, 0] &&
+    (Mat.symm .upper 0 N N 3 C).toList == [0, 3, 6, 9] &&
+    (Mat.symmRight .lower 0 N N 1 C).toList == C.toList
+
+/-- The products against `gemm` with the full symmetric matrix: zero up to rounding. -/
+def symmResidual (m n : Nat) (uplo : Uplo) : Float32 :=
+  let S (k : Nat) : Mat k k := .ofFn fun i j =>
+    let T := triM k 1 0 .upper
+    (if i.val ≤ j.val then T[(i.val, j.val)] else T[(j.val, i.val)]) / 3
+  let B := matThirds m n 2
+  let C := matThirds m n 3
+  let r := Mat.symm uplo 1.5 (S m) B 0.5 C
+  let s := Mat.symmRight uplo 1.5 (S n) B 0.5 C
+  let r' := Mat.gemm 1.5 (S m) B 0.5 C
+  let s' := Mat.gemm 1.5 B (S n) 0.5 C
+  ((r.toList.zip r'.toList) ++ (s.toList.zip s'.toList)).foldl
+    (fun s (x, y) => max s (x - y).abs) 0
+
+#guard symmResidual 30 20 .lower < 1e-4 && symmResidual 30 20 .upper < 1e-4
+
+/-- Whether `symm` and `symmRight` update an unshared `C` in place. -/
+def symmInPlace (n : Nat) : Bool :=
+  let (p, C) := withAddr (matLd n n 2 (n + 1) 3)
+  let (q, C') := withAddr (mat n n 3)
+  let (r, C'') := withAddr (mat n n 4)
+  let (s, C₃) := withAddr (mat n n 5)
+  BLASTest.addr (Mat.symm .lower 1 (triM n) (mat n n 1) 1 C).data == p &&
+    BLASTest.addr (Mat.symm .upper 2 (triM n 0 0 .upper) (mat n n 1) 0 C₃).data == s &&
+    BLASTest.addr (Mat.symmRight .upper 2 (triM n 0 0 .upper) (mat n n 1) 1 C').data == q &&
+    BLASTest.addr (Mat.symmRight .lower 2 (triM n) (mat n n 1) 0.5 C'').data == r
+
+#guard symmInPlace 8
