@@ -78,6 +78,22 @@ example (A : Mat m m) (B : Mat m n) :
 example (A : Mat n n) (B : Mat m n) :
     blas%(B := α • B * A.unitUpper⁻¹) = Mat.trsmRight .upper .unit α A B := by simp
 
+-- A subtracted summand has the negated scalar.
+example (A : Mat m n) (x : Vec n) (y : Vec m) : blas%(y := A * x - y) = Mat.gemv 1 A x (-1) y :=
+  by simp
+
+example (A : Mat m n) (x : Vec n) (y : Vec m) : blas%(y -= A * x) = Mat.gemv (-1) A x 1 y := by
+  simp
+
+example (A : Mat m k) (B : Mat k n) (C : Mat m n) :
+    blas%(C := -α • A * B - β • C) = Mat.gemm (-α) A B (-β) C := by simp
+
+example (x y : Vec n) : blas%(y := y - α • x) = Vec.axpy (-α) x y := by simp
+
+example (x y : Vec n) : blas%(y -= α • x) = Vec.axpy (-α) x y := by simp
+
+example (x : Vec n) : blas%(x := -x) = Vec.scal (-1) x := by simp
+
 -- The specifications of the routines apply to the updates.
 example (A : Mat m n) (x : Vec n) (y : Vec m) (i : Nat) (h : i < m) (hn : n ≠ 0)
     (hα : (α == 0) = false) :
@@ -107,6 +123,13 @@ end
   blas% y += A * A[:, 0]
   -- `3 * ([2, 4] + 2 * [1, 3]) + [[1, 2], [3, 4]] * [1, 3]`
   return y.toList == [19, 45]
+
+-- `y - 2 * x` and `A * x - y`, for `A = [[1, 2], [3, 4]]`, `x = [1, 1]` and `y = [5, 5]`.
+#guard
+  let A : Mat 2 2 := .ofPMat ⟨.ofList [1, 3, 2, 4], by decide⟩
+  let x : Vec 2 := .ofList [1, 1]
+  let y : Vec 2 := .ofList [5, 5]
+  (blas%(y -= 2 • x)).toList == [3, 3] && (blas%(y := A * x - y)).toList == [-2, 2]
 
 -- `C := A * B + C`, for `A = [[1, 2], [3, 4]]`, `B = I` and `C = [[1, 1], [1, 1]]`.
 #guard
@@ -156,6 +179,18 @@ error: blas%: no single BLAS routine computes this update of `y`
 -/
 #guard_msgs in
 example (x y : Vec 2) : Vec 2 := blas%(y := (2 : Float32) • x)
+
+/--
+error: blas%: no single BLAS routine computes this update of `y`
+-/
+#guard_msgs in
+example (x y : Vec 2) : Vec 2 := blas%(y := x - y)
+
+/--
+error: blas%: no single BLAS routine computes this update of `y`
+-/
+#guard_msgs in
+example (A : Mat 2 2) (x z y : Vec 2) : Vec 2 := blas%(y := A * x - z)
 
 /--
 error: blas%: no single BLAS routine computes a product of three factors

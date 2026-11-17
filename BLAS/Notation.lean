@@ -16,7 +16,8 @@ The root module `BLAS` doesn't import this one, because it makes `blas%` a keywo
 
 `blas% y := e` updates `y` by a single routine, chosen from the form of `e` and the kinds of its
 operands. In a `do` block it reassigns the mutable variable `y`, and as a term, `blas%(y := e)` is
-the new value of `y`. `blas% y += e` is `blas% y := e + y`.
+the new value of `y`. `blas% y += e` is `blas% y := y + e`, and `blas% y -= e` is
+`blas% y := y - e`.
 
 | Update                       | Expansion                     | Routine                    |
 |------------------------------|-------------------------------|----------------------------|
@@ -31,14 +32,17 @@ the new value of `y`. `blas% y += e` is `blas% y := e + y`.
 The routine of `MulAdd` follows from the kinds of `A` and `x`: a matrix and a vector is `gemv`, a
 transpose `Aᵀ` and a vector `gemvT`, and two matrices `gemm`. A missing `α` is `1`, a missing
 `β • y` is `β = 0`, which sets `y` to `0` without reading it, as in the reference BLAS, and a bare
-`y` is `β = 1`. The summands may come in any order.
+`y` is `β = 1`. The summands may come in any order, and a subtracted summand `- α • …` has the
+scalar `-α` (`-1` if it has none). Floating-point negation is exact, and `a - b` is `a + (-b)`, so
+`y := A * x - y` is `gemv 1 A x (-1) y` and `y -= α • x` is `axpy (-α) x y`, to the bit.
 
 ## Grammar
 
-The right side is a sum of summands `s • f * g`, with an optional scalar `s` and one or two
-factors `f` and `g`. The `•` ends the scalar, so the scalar is a product or quotient of terms, as
-in `2 * a • A * x` or `-α / 2 • x`, with no parentheses: only a scalar sum needs them,
-`(a + b) • x`, as `+` separates the summands. A scalar term and a factor are Lean terms above the
+The right side is a sum of summands `s • f * g`, which may be subtracted, as in `- f + g - h`,
+with an optional scalar `s` and one or two factors `f` and `g`. The `•` ends the scalar, so the
+scalar is a product or quotient of terms, as in `2 * a • A * x` or `-α / 2 • x`, with no
+parentheses: only a scalar sum or difference needs them, `(a - b) • x`, as `+` and `-` separate the
+summands. A scalar term and a factor are Lean terms above the
 precedence of `*`, such as `α`, `-α`, `f a`, `x.dot y` or `A.lower⁻¹`. A factor can also be a
 transpose `Aᵀ`, a column `A[:, j]` or a row `A[i, :]` of a matrix `A`, as vectors with no copy.
 
@@ -82,8 +86,8 @@ syntax (atomic(blasScalar " • "))? blasFactor (" * " blasFactor)* : blasSumman
 /-- The right side of a `blas%` update. -/
 declare_syntax_cat blasSum
 
-/-- The right side of a `blas%` update is a sum of summands. -/
-syntax sepBy1(blasSummand, " + ") : blasSum
+/-- The right side of a `blas%` update is a sum and difference of summands. -/
+syntax ("-")? blasSummand ((" + " <|> " - ") blasSummand)* : blasSum
 
 /-- A summand of the right side of a `blas%` update, with its optional scalar. -/
 private inductive Summand where
@@ -124,11 +128,16 @@ private meta def factor (f : TSyntax `blasFactor) : MacroM Term := do
     return t
   | _ => Macro.throwUnsupported
 
-/-- Classifies a summand of the right side of a `blas%` update. -/
-private meta def classify (s : TSyntax `blasSummand) : MacroM Summand := do
+/--
+Classifies a summand of the right side of a `blas%` update, negated if `neg`: its scalar `α`
+becomes `-α`, and a missing one `-1`. Negation is exact, so `y - α • x` is `y + (-α) • x` to the
+bit.
+-/
+private meta def classify (s : TSyntax `blasSummand) (neg : Bool) : MacroM Summand := do
   match s with
   | `(blasSummand| $[$c:blasScalar •]? $f:blasFactor $[* $gs:blasFactor]*) =>
     let c ← c.mapM scalar
+    let c ← if neg then some <$> (match c with | some c => `(-$c) | none => `(-1)) else pure c
     match gs with
     | #[] => return .plain c (← factor f)
     | #[g] => return .prod c (← factor f) (← factor g)
@@ -140,13 +149,21 @@ private meta def classify (s : TSyntax `blasSummand) : MacroM Summand := do
 private meta def isTarget (y : Ident) (t : Term) : Bool :=
   t.raw.isIdent && t.raw.getId == y.getId
 
-/-- The routine call of the update `y := e`, and of `y += e` if `add`. -/
-private meta def expand (y : Ident) (e : TSyntax `blasSum) (add : Bool) : MacroM Term := do
-  let `(blasSum| $[$ss:blasSummand]+*) := e | Macro.throwUnsupported
+/-- The summands of the right side of a `blas%` update, with whether each one is subtracted. -/
+private meta def summands (e : TSyntax `blasSum) : Array (Bool × TSyntax `blasSummand) := Id.run do
+  let mut out := #[(!e.raw[0].isNone, ⟨e.raw[1]⟩)]
+  for p in e.raw[2].getArgs do
+    out := out.push ((p[0].find? (·.isToken "-")).isSome, ⟨p[1]⟩)
+  return out
+
+/--
+The routine call of the update `y := e`, and of `y += e` if `add`, or `y -= e` if also `sub`.
+-/
+private meta def expand (y : Ident) (e : TSyntax `blasSum) (add sub : Bool) : MacroM Term := do
   let mut target : Option (Option Term) := if add then some none else none
   let mut others : Array Summand := #[]
-  for t in ss do
-    let s ← classify t
+  for (neg, t) in summands e do
+    let s ← classify t (neg != sub)
     match s with
     | .plain c x =>
       if isTarget y x then
@@ -196,12 +213,20 @@ scoped syntax (name := blasDo) "blas% " ident " := " blasSum : doElem
 /-- `blas% y += e` is `blas% y := e + y`. -/
 scoped syntax (name := blasAddDo) "blas% " ident " += " blasSum : doElem
 
+/-- `blas%(y -= e)` is `blas%(y := y - e)`. -/
+scoped syntax (name := blasSubTerm) "blas%(" ident " -= " blasSum ")" : term
+
+/-- `blas% y -= e` is `blas% y := y - e`. -/
+scoped syntax (name := blasSubDo) "blas% " ident " -= " blasSum : doElem
+
 macro_rules
-  | `(blas%($y := $e)) => expand y e false
-  | `(blas%($y += $e)) => expand y e true
+  | `(blas%($y := $e)) => expand y e false false
+  | `(blas%($y += $e)) => expand y e true false
+  | `(blas%($y -= $e)) => expand y e true true
 
 macro_rules
   | `(doElem| blas% $y:ident := $e) => `(doElem| $y:ident := blas%($y := $e))
   | `(doElem| blas% $y:ident += $e) => `(doElem| $y:ident := blas%($y += $e))
+  | `(doElem| blas% $y:ident -= $e) => `(doElem| $y:ident := blas%($y -= $e))
 
 end BLAS.Notation
