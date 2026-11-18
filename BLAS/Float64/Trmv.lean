@@ -250,9 +250,7 @@ public def trmvLowerData (d : Diag) (A : Mat n n) (x : Vec n) : Float64Array :=
             exact this
           a[o + c * (nu - 1 - k + 1) + c * i] := a[o + c * (nu - 1 - k + 1) + c * i] +
             t * A.uget ao al rfl rfl hs.1 (nu - 1 - k + 1 + i) (nu - 1 - k)
-              (by
-                rw [toNat_succ_add (Nat.lt_trans hjk (Nat.lt_of_le_of_lt x.le_size hs.2))]
-                exact hjk) hjn).2
+              (by grind [-PUnit]) hjn).2
   else iterRange (trmvLowerStep d A x) 0 n x.data
 
 public theorem trmvLowerData_eq_iterRange (d : Diag) (A : Mat n n) (x : Vec n) :

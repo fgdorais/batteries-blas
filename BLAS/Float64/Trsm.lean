@@ -149,8 +149,7 @@ private theorem below_lt {mu j i : USize} (hmu : mu.toNat = m) (hj : j.toNat < m
     (hi : i.toNat < (mu - j - 1).toNat) : (j + 1 + i).toNat < m := by
   have : (mu - j - 1).toNat = m - j.toNat - 1 := by grind
   have : m < USize.size := by grind
-  rw [toNat_succ_add (by lia)]
-  lia
+  grind
 
 private theorem col_below_lt {sz : Nat} {cq mu j i : USize} (hw : cq.toNat + m ≤ sz)
     (hmu : mu.toNat = m) (hj : j.toNat < m) (hi : i.toNat < (mu - j - 1).toNat) :
@@ -528,8 +527,9 @@ theorem trsmLower4Data_eq (d : Diag) (α : Float) (A : Mat m m) (off ld : Nat) (
     · intro i _ hi next' s' h'
       rw [hr] at hi
       have hb : j.toNat + 1 + i.toNat < m := by lia
-      have hji : (j + 1 + i).toNat = j.toNat + 1 + i.toNat :=
-        toNat_succ_add (Nat.lt_of_lt_of_le hb (by have := hq' 0 (by lia); lia))
+      have hji : (j + 1 + i).toNat = j.toNat + 1 + i.toNat := by
+        have : j.toNat + 1 + i.toNat < USize.size := by have := hq' 0 (by lia); lia
+        grind only
       have p₀ : ((off + ld * c).toUSize + (j + 1 + i)).toNat =
           off + ld * c + (j.toNat + 1 + i.toNat) := by
         rw [hcj _ _ (by have := hq' 0 (by lia); rw [e₀]; simpa using this) hb _ hji, e₀]
