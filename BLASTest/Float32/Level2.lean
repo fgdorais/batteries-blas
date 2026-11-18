@@ -10,7 +10,8 @@ meta import BLAS
 meta import BLASTest.Util
 
 /-!
-Tests for `gemv`, `gemvT`, `ger`, `trsv`, `trsvT`, `trmv` and `trmvT` on `Float32`.
+Tests for `gemv`, `gemvT`, `ger`, `trsv`, `trsvT`, `trmv`, `trmvT`, `symv`, `syr` and `syr2` on
+`Float32`.
 -/
 
 open BLAS.Float32
@@ -424,3 +425,171 @@ def trmvInPlace (n : Nat) : Bool :=
     BLASTest.addr (Mat.trmvT .upper .unit (triMat n 0 0 .upper) x').data == q
 
 #guard trmvInPlace 8
+
+/-! ## `symv` -/
+
+-- `A = [[2, 1], [1, 3]]`, stored in either triangle: `A * [1, 2] = [4, 7]`.
+#guard
+  let nan : Float32 := 0 / 0
+  let U : Mat 2 2 := .ofPMat ⟨.ofList [2, nan, 1, 3], by decide⟩
+  let L : Mat 2 2 := .ofPMat ⟨.ofList [2, 1, nan, 3], by decide⟩
+  let x : Vec 2 := .ofList [1, 2]
+  let y : Vec 2 := .ofList [10, 20]
+  (Mat.symv .upper 1 U x 0 y).toList == [4, 7] && (Mat.symv .lower 1 L x 0 y).toList == [4, 7] &&
+    (Mat.symv .upper 2 U x 1 y).toList == [18, 34] &&
+    (Mat.symv .lower 0 L x 0.5 y).toList == [5, 10]
+
+/-- The loops of the reference BLAS for `symv`, on `Array`s. -/
+def symvRef (uplo : Uplo) (α : Float32) (A : Mat n n) (x : Vec n) (β : Float32) (y : Vec n) :
+    List Float32 := Id.run do
+  let mut b := y.toList.toArray
+  let xs := x.toList.toArray
+  if n == 0 || (α == 0 && β == 1) then return b.toList
+  if β != 1 then
+    for i in List.range n do b := b.set! i (if β == 0 then 0 else β * b[i]!)
+  if α == 0 then return b.toList
+  let a (i j : Nat) := A[(i, j)]?.getD 0
+  for j in List.range n do
+    let t₁ := α * xs[j]!
+    let mut t₂ : Float32 := 0
+    match uplo with
+    | .upper =>
+      for i in List.range j do
+        b := b.set! i (b[i]! + t₁ * a i j)
+        t₂ := t₂ + a i j * xs[i]!
+      b := b.set! j (b[j]! + t₁ * a j j + α * t₂)
+    | .lower =>
+      b := b.set! j (b[j]! + t₁ * a j j)
+      for i in (List.range n).filter (j < ·) do
+        b := b.set! i (b[i]! + t₁ * a i j)
+        t₂ := t₂ + a i j * xs[i]!
+      b := b.set! j (b[j]! + α * t₂)
+  return b.toList
+
+/-- The bits of a list of floats. -/
+def floatBits (l : List Float32) := l.map Float32.toBits
+
+/--
+Whether `symv` matches the reference loops bit for bit, on packed operands and on operands with
+offsets, strides and leading dimensions, doesn't read the other triangle, and leaves the rest of
+`y`'s array unchanged.
+-/
+def symvMatches (n : Nat) (uplo : Uplo) (α β : Float32) : Bool :=
+  let A := thirdsMat (triMat n 1 0 uplo)
+  let r := symvRef uplo α A (vec n 2) β (vec n 5)
+  let ok₁ := floatBits (Mat.symv uplo α A (vec n 2) β (vec n 5)).toList == floatBits r
+  let B := thirdsMat (triMat n 1 (0 / 0) uplo)
+  let B' := (Mat.ofLd? (Mat.ofFn (m := n + 3) (n := n) fun i j =>
+    if h : i.val < n then B[(i.val, j.val)]'⟨h, j.isLt⟩ else mark).data 0 (n + 3)).getD B
+  let y := vecInc n 1 2 5
+  let z := Mat.symv uplo α B' (vecInc n 2 3 2) β y
+  ok₁ && floatBits z.toList == floatBits r && marks z.data == marks y.data
+
+#guard [Uplo.lower, .upper].all fun u =>
+  symvMatches 5 u 1.5 0.5 && symvMatches 1 u 2 0 && symvMatches 0 u 1 1 &&
+    symvMatches 40 u (-0.25) 1 && symvMatches 300 u (1 / 7) (-2) && symvMatches 17 u 0 0.5 &&
+    symvMatches 17 u 0 0 && symvMatches 17 u 1 0
+
+/-- `symv` on the two triangles of a symmetric matrix agrees with `gemv`, up to rounding. -/
+def symvResidual (n : Nat) : Float32 :=
+  let S : Mat n n := .ofFn fun i j => ((i.val * j.val + i.val + j.val) % 7).toFloat32 / 3
+  let g := Mat.gemv 1.5 S (vec n 2) 0.5 (vec n 5)
+  let e := ((Mat.symv .upper 1.5 S (vec n 2) 0.5 (vec n 5)).toList.zip g.toList) ++
+    ((Mat.symv .lower 1.5 S (vec n 2) 0.5 (vec n 5)).toList.zip g.toList)
+  e.foldl (fun s (u, v) => max s (u - v).abs) 0
+
+#guard symvResidual 50 < 1e-4
+
+/-- Whether `symv` updates an unshared `y` in place. -/
+def symvInPlace (n : Nat) : Bool :=
+  let (p, y) := withAddr (vecInc n 1 2)
+  let (q, y') := withAddr (vecInc n 1 2 5)
+  BLASTest.addr (Mat.symv .lower 2 (triMat n) (vec n) 0.5 y).data == p &&
+    BLASTest.addr (Mat.symv .upper 2 (triMat n 0 0 .upper) (vec n) 0 y').data == q
+
+#guard symvInPlace 8
+
+/-! ## `syr` and `syr2` -/
+
+/-- The `2 × 2` matrix of `1`s. -/
+def ones : Mat 2 2 := .ofFn fun _ _ => 1
+
+-- `[1, 2] * [1, 2]ᵀ` on each triangle, over `1`s: the other triangle is unchanged.
+#guard (Mat.syr (n := 2) .upper 1 (.ofList [1, 2]) ones).toList == [2, 1, 3, 5]
+#guard (Mat.syr (n := 2) .lower 1 (.ofList [1, 2]) ones).toList == [2, 3, 1, 5]
+#guard (Mat.syr2 (n := 2) .upper 1 (.ofList [1, 2]) (.ofList [3, 4]) ones).toList ==
+  [7, 1, 11, 17]
+
+/-- The loops of the reference BLAS for `syr2`, or `syr` when `y` is `none`, on `Array`s. -/
+def syrRef (uplo : Uplo) (α : Float32) (x : Vec n) (y : Option (Vec n)) (A : Mat n n) :
+    List Float32 := Id.run do
+  let mut a := A.toList.toArray
+  let xs := x.toList.toArray
+  if n == 0 || α == 0 then return a.toList
+  for j in List.range n do
+    let is := match uplo with
+      | .upper => List.range (j + 1)
+      | .lower => (List.range n).filter (j ≤ ·)
+    match y with
+    | none =>
+      if xs[j]! != 0 then
+        let t := α * xs[j]!
+        for i in is do a := a.set! (i + n * j) (a[i + n * j]! + xs[i]! * t)
+    | some y =>
+      let ys := y.toList.toArray
+      if xs[j]! != 0 || ys[j]! != 0 then
+        let t₁ := α * ys[j]!
+        let t₂ := α * xs[j]!
+        for i in is do a := a.set! (i + n * j) (a[i + n * j]! + xs[i]! * t₁ + ys[i]! * t₂)
+  return a.toList
+
+/-- `vec n s` divided by `3`, so that the order of the sums changes their roundings. -/
+def thirdsVec (n : Nat) (s : Nat := 0) : Vec n :=
+  let x := vec n s
+  .ofFn fun i => x[i.val] / 3
+
+/--
+Whether `syr` and `syr2` match the reference loops bit for bit, on packed operands and on operands
+with offsets, strides and leading dimensions, leave the other triangle (here `NaN`) unchanged, and
+leave the rest of `A`'s array unchanged.
+-/
+def syrMatches (n : Nat) (uplo : Uplo) (α : Float32) : Bool :=
+  let A := thirdsMat (triMat n 1 (0 / 0) uplo)
+  let x := thirdsVec n 2
+  let y := thirdsVec n 5
+  let r := syrRef uplo α x none A
+  let r2 := syrRef uplo α x (some y) A
+  let A' := (Mat.ofLd? (Mat.ofFn (m := n + 3) (n := n) fun i j =>
+    if h : i.val < n then A[(i.val, j.val)]'⟨h, j.isLt⟩ else mark).data 0 (n + 3)).getD A
+  let x' : Vec n := (Vec.ofStride? (ScalarArray.Float32Array.ofFn (n := 1 + 2 * n) fun p =>
+    if 1 ≤ p.val ∧ (p.val - 1) % 2 = 0 then x[(p.val - 1) / 2]! else mark) 1 2).getD x
+  let y' : Vec n := (Vec.ofStride? (ScalarArray.Float32Array.ofFn (n := 3 * n) fun p =>
+    if p.val % 3 = 0 then y[p.val / 3]! else mark) 0 3).getD y
+  let B := Mat.syr uplo α x' A'
+  let B2 := Mat.syr2 uplo α x' y' A'
+  floatBits (Mat.syr uplo α x A).toList == floatBits r &&
+    floatBits (Mat.syr2 uplo α x y A).toList == floatBits r2 &&
+    floatBits B.toList == floatBits r && floatBits B2.toList == floatBits r2 &&
+    marks B.data == marks A'.data && marks B2.data == marks A'.data
+
+#guard (thirdsVec 9 2).toList.contains 0
+#guard [Uplo.lower, .upper].all fun u =>
+  syrMatches 5 u 1.5 && syrMatches 1 u 2 && syrMatches 0 u 1 && syrMatches 40 u (-0.25) &&
+    syrMatches 300 u (1 / 7) && syrMatches 17 u 0
+
+-- A column with `x[j] = 0` (and `y[j] = 0` for `syr2`) is skipped, so an infinity in `x` or `y`
+-- doesn't reach it.
+#guard
+  let inf : Float32 := 1 / 0
+  (Mat.syr (n := 2) .lower 1 (.ofList [0, inf]) ones).toList == [1, 1, 1, inf] &&
+    ((Mat.syr2 (n := 2) .lower 1 (.ofList [0, inf]) (.ofList [0, 1]) ones).toList.take 3) ==
+      [1, 1, 1]
+
+/-- Whether `syr` and `syr2` update an unshared `A` in place. -/
+def syrInPlace (n : Nat) : Bool :=
+  let (p, A) := withAddrMat (matLd n n 2 (n + 1))
+  let (q, A') := withAddrMat (matLd n n 2 (n + 1) 3)
+  BLASTest.addr (Mat.syr .lower 1 (vec n 2) A).data == p &&
+    BLASTest.addr (Mat.syr2 .upper 1 (vec n 2) (vec n 3) A').data == q
+
+#guard syrInPlace 8

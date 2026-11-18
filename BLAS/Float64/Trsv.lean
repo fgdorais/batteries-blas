@@ -143,9 +143,7 @@ public def trsvLowerData (d : Diag) (A : Mat n n) (x : Vec n) : Float64Array :=
             exact this
           a[o + c * (j + 1) + c * k] := a[o + c * (j + 1) + c * k] -
             t * A.uget ao al rfl rfl hs.1 (j + 1 + k) j
-              (by
-                rw [toNat_succ_add (Nat.lt_trans hjk (Nat.lt_of_le_of_lt x.le_size hs.2))]
-                exact hjk) (by lia)).2
+              (by grind [-PUnit]) (by lia)).2
   else iterRange (trsvLowerStep d A x) 0 n x.data
 
 public theorem trsvLowerData_eq_iterRange (d : Diag) (A : Mat n n) (x : Vec n) :

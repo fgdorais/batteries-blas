@@ -242,8 +242,9 @@ def mat (m s : Nat) : BLAS.Float32.Mat m m :=
   .ofFn fun i j => ((i.val * 7 + j.val * 13 + s) % 11).toFloat32 - 5
 
 /--
-The `gemm` benchmarks for `m × m` matrices: the rows of `gemmNaive`, `gemm` and the transposed
-`gemm`s, and their floating-point operations. Each timed call depends on its argument, which is
+The `gemm` benchmarks for `m × m` matrices: the rows of `gemmNaive`, `gemm`, the transposed
+`gemm`s, and `gemmtr` and `gemmtrTN` on the lower triangle, and the floating-point operations of
+`gemm`. Each timed call depends on its argument, which is
 `m`, so that the compiler can't hoist it out of the timing loop.
 -/
 def gemmRows (rounds m : Nat) : IO (List Row × Nat) := do
@@ -265,16 +266,22 @@ def gemmRows (rounds m : Nat) : IO (List Row × Nat) := do
   let ttn ← time rounds m fun q => (BLAS.Float32.Mat.gemmTN (α q) A B 0.5 C).data[0]!
   let tnt ← time rounds m fun q => (BLAS.Float32.Mat.gemmNT (α q) A B 0.5 C).data[0]!
   let ttt ← time rounds m fun q => (BLAS.Float32.Mat.gemmTT (α q) A B 0.5 C).data[0]!
+  let ttr ← time rounds m fun q => (BLAS.Float32.Mat.gemmtr .lower (α q) A B 0.5 C).data[0]!
+  let ttrT ← time rounds m fun q =>
+    (BLAS.Float32.Mat.gemmtrTN .lower (α q) A B 0.5 C).data[0]!
   return ([⟨s!"gemmNaive {m}", t, some t'⟩, ⟨s!"gemm {m}", tb, some t'⟩,
     ⟨s!"gemm {m}, ld = {m} + 8 / ld = {m}", tl, some tb⟩,
     ⟨s!"gemmTN {m} / gemm", ttn, some tb⟩, ⟨s!"gemmNT {m} / gemm", tnt, some tb⟩,
-    ⟨s!"gemmTT {m} / gemm", ttt, some tb⟩], 2 * m * m * m)
+    ⟨s!"gemmTT {m} / gemm", ttt, some tb⟩,
+    ⟨s!"gemmtr lower {m}, half the operations / gemm", ttr, some tb⟩,
+    ⟨s!"gemmtrTN lower {m}, half the operations / gemmTN", ttrT, some ttn⟩], 2 * m * m * m)
 
 /--
 The Level 2 benchmarks for `m × m` matrices, ten calls per round: `gemv`, `gemvT` and `ger`, on
-packed operands, `gemv` with `x` and `y` at stride 2, and `trsv`, `trsvT`, `trmv` and `trmvT` on
-both triangles. Each makes `2 * m * m` floating-point operations per call, except the triangular
-ones, which make about `m * m`.
+packed operands, `gemv` with `x` and `y` at stride 2, `trsv`, `trsvT`, `trmv` and `trmvT` on
+both triangles, `symv` on both triangles, `syr` on the lower one and `syr2` on the upper one. Each
+makes `2 * m * m` floating-point operations per call, except the triangular ones and `syr`, which
+make about `m * m`.
 -/
 def level2Rows (rounds m : Nat) : IO (List Row × Nat) := do
   let A := mat m 1
@@ -344,6 +351,26 @@ def level2Rows (rounds m : Nat) : IO (List Row × Nat) := do
     for _ in [0:reps] do
       y := BLAS.Float32.Mat.trmvT .upper .nonUnit T y
     return y.data[0]!
+  let tsl ← time rounds m fun q => Id.run do
+    let mut y := x
+    for _ in [0:reps] do
+      y := BLAS.Float32.Mat.symv .lower (α q) T x 0.5 y
+    return y.data[0]!
+  let tsu ← time rounds m fun q => Id.run do
+    let mut y := x
+    for _ in [0:reps] do
+      y := BLAS.Float32.Mat.symv .upper (α q) T x 0.5 y
+    return y.data[0]!
+  let tyl ← time rounds m fun q => Id.run do
+    let mut B := A
+    for _ in [0:reps] do
+      B := BLAS.Float32.Mat.syr .lower (α q) x B
+    return B.data[0]!
+  let ty2u ← time rounds m fun q => Id.run do
+    let mut B := A
+    for _ in [0:reps] do
+      B := BLAS.Float32.Mat.syr2 .upper (α q) x x B
+    return B.data[0]!
   return ([⟨s!"gemv {m} ×{reps}", tv, none⟩, ⟨s!"gemvT {m} ×{reps}", tt, none⟩,
     ⟨s!"ger {m} ×{reps}", tg, none⟩, ⟨s!"gemv {m} ×{reps}, stride 2 / stride 1", tv2, some tv⟩,
     ⟨s!"trsv lower {m} ×{reps}", tl, none⟩, ⟨s!"trsv upper {m} ×{reps}", tu, none⟩,
@@ -352,15 +379,20 @@ def level2Rows (rounds m : Nat) : IO (List Row × Nat) := do
     ⟨s!"trmv lower {m} ×{reps} / trsv", tlM, some tl⟩,
     ⟨s!"trmv upper {m} ×{reps} / trsv", tuM, some tu⟩,
     ⟨s!"trmvT lower {m} ×{reps} / trsv", tlMT, some tl⟩,
-    ⟨s!"trmvT upper {m} ×{reps} / trsv", tuMT, some tu⟩],
+    ⟨s!"trmvT upper {m} ×{reps} / trsv", tuMT, some tu⟩,
+    ⟨s!"symv lower {m} ×{reps} / gemv", tsl, some tv⟩,
+    ⟨s!"symv upper {m} ×{reps} / gemv", tsu, some tv⟩,
+    ⟨s!"syr lower {m} ×{reps} / ger", tyl, some tg⟩,
+    ⟨s!"syr2 upper {m} ×{reps} / ger", ty2u, some tg⟩],
     2 * m * m * reps)
 
 /--
-The `syrk`, `trsm` and `trmm` benchmarks for `m × m` matrices: `syrk` and `syrkT` on the lower
-triangle, `trsm`, `trsmT`, `trmm` and `trmmT` on the lower triangle and `trsmRight`, `trsmRightT`,
-`trmmRight` and `trmmRightT` on the upper one, with a non-unit diagonal. Each makes about
-`m * m * m` floating-point operations per call. As for `gemm`, each call copies the shared
-`C` or `B` first.
+The `syrk`, `trsm`, `trmm`, `symm` and `syr2k` benchmarks for `m × m` matrices: `syrk` and `syrkT`
+on the lower triangle, `trsm`, `trsmT`, `trmm`, `trmmT` and `symm` on the lower triangle and
+`trsmRight`, `trsmRightT`, `trmmRight`, `trmmRightT` and `symmRight` on the upper one, with a
+non-unit diagonal. Each makes about `m * m * m` floating-point operations per call, and
+`2 * m * m * m` for `symm`, `symmRight`, and `syr2k` and `syr2kT` on the lower triangle. As for
+`gemm`, each call copies the shared `C` or `B` first.
 -/
 def level3Rows (rounds m : Nat) : IO (List Row × Nat) := do
   let A := mat m 1
@@ -382,6 +414,12 @@ def level3Rows (rounds m : Nat) : IO (List Row × Nat) := do
   let tmT ← time rounds m fun q => (BLAS.Float32.Mat.trmmT .lower .nonUnit (α q) T C).data[0]!
   let tmrT ← time rounds m fun q =>
     (BLAS.Float32.Mat.trmmRightT .upper .nonUnit (α q) T C).data[0]!
+  let tsm ← time rounds m fun q => (BLAS.Float32.Mat.symm .lower (α q) T A 0.5 C).data[0]!
+  let tsmr ← time rounds m fun q =>
+    (BLAS.Float32.Mat.symmRight .upper (α q) T A 0.5 C).data[0]!
+  let B := mat m 2
+  let ts2 ← time rounds m fun q => (BLAS.Float32.Mat.syr2k .lower (α q) A B 0.5 C).data[0]!
+  let ts2T ← time rounds m fun q => (BLAS.Float32.Mat.syr2kT .lower (α q) A B 0.5 C).data[0]!
   return ([⟨s!"syrk lower {m}", ts, none⟩, ⟨s!"syrkT lower {m}", tt, none⟩,
     ⟨s!"trsm lower {m}", tl, none⟩, ⟨s!"trsmRight upper {m}", tr, none⟩,
     ⟨s!"trsmT lower {m} / trsm", tlT, some tl⟩,
@@ -389,11 +427,15 @@ def level3Rows (rounds m : Nat) : IO (List Row × Nat) := do
     ⟨s!"trmm lower {m} / trsm", tm, some tl⟩,
     ⟨s!"trmmRight upper {m} / trsmRight", tmr, some tr⟩,
     ⟨s!"trmmT lower {m} / trsm", tmT, some tl⟩,
-    ⟨s!"trmmRightT upper {m} / trsmRight", tmrT, some tr⟩], m * m * m)
+    ⟨s!"trmmRightT upper {m} / trsmRight", tmrT, some tr⟩,
+    ⟨s!"symm lower {m}, 2 m³ operations", tsm, none⟩,
+    ⟨s!"symmRight upper {m}, 2 m³ operations", tsmr, none⟩,
+    ⟨s!"syr2k lower {m}, 2 m³ operations / syrk", ts2, some ts⟩,
+    ⟨s!"syr2kT lower {m}, 2 m³ operations / syrkT", ts2T, some tt⟩], m * m * m)
 
 /--
-All the benchmarks: Level 1, Level 2, `gemm`, and `syrk`, `trsm` and `trmm`, each with its floating-point
-operations.
+All the benchmarks: Level 1, Level 2, `gemm`, and `syrk`, `trsm`, `trmm`, `symm` and `syr2k`, each
+with its floating-point operations.
 -/
 public def all (rounds n : Nat) :
     IO (List Row × List (List Row × Nat) × List (List Row × Nat) × List (List Row × Nat)) := do

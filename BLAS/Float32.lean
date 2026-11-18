@@ -23,6 +23,11 @@ public import BLAS.Float32.Trsm
 public import BLAS.Float32.TrsmT
 public import BLAS.Float32.Trmm
 public import BLAS.Float32.TrmmRight
+public import BLAS.Float32.Symv
+public import BLAS.Float32.Symm
+public import BLAS.Float32.Syr
+public import BLAS.Float32.Syr2k
+public import BLAS.Float32.Gemmtr
 public import BLAS.Float32.View
 
 /-!

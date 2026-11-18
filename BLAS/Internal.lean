@@ -21,15 +21,6 @@ They are private: they are not part of the library's API. The files that need th
 namespace BLAS
 
 /--
-`(j + 1 + k).toNat = j.toNat + 1 + k.toNat` when the result doesn't wrap around. This is a `grind`
-fact, but a `grind` proof inside an `inplace` loop body captures the loop's state and stops the loop
-lemmas from matching, so inner loop bodies use this lemma instead.
--/
-private theorem toNat_succ_add {j k : USize} (h : j.toNat + 1 + k.toNat < USize.size) :
-    (j + 1 + k).toNat = j.toNat + 1 + k.toNat := by
-  grind
-
-/--
 `(m * j).toNat + m.toNat ≤ p` for `j < n` and `m * n ≤ p`: column `j` fits. A product that wraps
 around only gets smaller, so this needs no bound on `p`.
 -/

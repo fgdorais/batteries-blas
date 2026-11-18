@@ -11,7 +11,8 @@ meta import BLASTest.Util
 
 /-!
 Tests for `gemm`, `gemmTN`, `gemmNT`, `gemmTT`, `syrk`, `syrkT`, `trsm`, `trsmRight`, `trsmT`,
-`trsmRightT`, `trmm`, `trmmT`, `trmmRight` and `trmmRightT` on `Float`.
+`trsmRightT`, `trmm`, `trmmT`, `trmmRight`, `trmmRightT`, `symm`, `symmRight`, `syr2k`, `syr2kT`,
+`gemmtr`, `gemmtrTN`, `gemmtrNT` and `gemmtrTT` on `Float`.
 -/
 
 open BLAS.Float64
@@ -811,3 +812,330 @@ def trmmInPlace (n : Nat) : Bool :=
     BLASTest.addr (Mat.trmmRightT .lower .nonUnit 2 (triM n) B'').data == r
 
 #guard trmmInPlace 8
+
+/-! ## `symm` and `symmRight` -/
+
+/-- The loops of the reference BLAS for `symm`, with `side = 'L'` (or `'R'` when `right`). -/
+def symmRef (right : Bool) (uplo : Uplo) (α : Float) (A : Mat k k) (B : Mat m n) (β : Float)
+    (C : Mat m n) : List Float := Id.run do
+  let mut c := C.toList.toArray
+  if m == 0 || n == 0 || (α == 0 && β == 1) then return c.toList
+  if α == 0 then
+    return c.toList.map fun v => if β == 0 then 0 else β * v
+  let a (i j : Nat) := A[(i, j)]?.getD 0
+  let b (i j : Nat) := B[(i, j)]?.getD 0
+  if !right then
+    for j in List.range n do
+      let rows := match uplo with
+        | .upper => List.range m
+        | .lower => (List.range m).reverse
+      for i in rows do
+        let t1 := α * b i j
+        let mut t2 := 0
+        let ks := match uplo with
+          | .upper => List.range i
+          | .lower => (List.range m).filter (i < ·)
+        for k in ks do
+          c := c.set! (k + m * j) (c[k + m * j]! + t1 * a k i)
+          t2 := t2 + b k j * a k i
+        if β == 0 then c := c.set! (i + m * j) (t1 * a i i + α * t2)
+        else c := c.set! (i + m * j) (β * c[i + m * j]! + t1 * a i i + α * t2)
+  else
+    for j in List.range n do
+      let t1 := α * a j j
+      for i in List.range m do
+        if β == 0 then c := c.set! (i + m * j) (t1 * b i j)
+        else c := c.set! (i + m * j) (β * c[i + m * j]! + t1 * b i j)
+      for k in List.range j do
+        let t := match uplo with
+          | .upper => α * a k j
+          | .lower => α * a j k
+        for i in List.range m do c := c.set! (i + m * j) (c[i + m * j]! + t * b i k)
+      for k in (List.range n).filter (j < ·) do
+        let t := match uplo with
+          | .upper => α * a j k
+          | .lower => α * a k j
+        for i in List.range m do c := c.set! (i + m * j) (c[i + m * j]! + t * b i k)
+  return c.toList
+
+/-- The elements of `mat m n s` divided by `3`. -/
+def matThirds (m n : Nat) (s : Nat := 0) : Mat m n :=
+  let A := mat m n s
+  .ofFn fun i j => A[(i.val, j.val)] / 3
+
+/-- The matrix `A` at the offset `3` with the leading dimension `m + 2`, in an array of
+`1e9 + 0.5`. -/
+def ldOf' (A : Mat m n) : Mat m n :=
+  (Mat.ofLd? (Mat.ofFn (m := m + 2) (n := n) fun i j =>
+    if h : i.val < m then A[(i.val, j.val)]'⟨h, j.isLt⟩ else 1e9 + 0.5).data 0 (m + 2)).getD A
+
+/--
+Whether `symm` and `symmRight` match the reference loops bit for bit, on packed operands and on
+operands with offsets and leading dimensions, don't read the other triangle of `A`, nor `C` when
+`β = 0`, and leave the rest of `C`'s array unchanged.
+-/
+def symmMatches (m n : Nat) (uplo : Uplo) (α β : Float) : Bool :=
+  let A := thirds (triM m 1 0 uplo)
+  let A' := thirds (triM n 1 0 uplo)
+  let B := matThirds m n 2
+  let C := matThirds m n 3
+  let nan : Float := 0 / 0
+  let C' := if β == 0 then ldOf' (Mat.ofFn (m := m) (n := n) fun _ _ => nan) else ldOf' C
+  let N := ldOf (thirds (withNaNs uplo .nonUnit m))
+  let N' := ldOf (thirds (withNaNs uplo .nonUnit n))
+  let X := Mat.symm uplo α N (ldOf' B) β C'
+  let Y := Mat.symmRight uplo α N' (ldOf' B) β C'
+  let r := symmRef false uplo α A B β C
+  let s := symmRef true uplo α A' B β C
+  bits (Mat.symm uplo α A B β C) == listBits r && bits (Mat.symmRight uplo α A' B β C) ==
+    listBits s && bits X == listBits r && bits Y == listBits s &&
+    outside X == outside C' && outside Y == outside C'
+
+#guard [Uplo.lower, .upper].all fun u =>
+  symmMatches 5 3 u 1.5 0.5 && symmMatches 1 1 u 2 0 && symmMatches 17 9 u (-0.25) 1 &&
+    symmMatches 40 33 u 1 (1 / 7) && symmMatches 0 3 u 1 1 && symmMatches 3 0 u 1 1 &&
+    symmMatches 6 4 u (1 / 3) 0 && symmMatches 9 12 u 0.7 (-2)
+
+-- `α = 0` only scales `C`, without reading `A` or `B`, nor `C` when `β = 0`.
+#guard
+  let nan : Float := 0 / 0
+  let N : Mat 2 2 := .ofFn fun _ _ => nan
+  let C : Mat 2 2 := .ofFn fun i j => (i.val + 2 * j.val).toFloat
+  (Mat.symm .lower 0 N N 0 N).toList == [0, 0, 0, 0] &&
+    (Mat.symmRight .upper 0 N N 0 N).toList == [0, 0, 0, 0] &&
+    (Mat.symm .upper 0 N N 3 C).toList == [0, 3, 6, 9] &&
+    (Mat.symmRight .lower 0 N N 1 C).toList == C.toList
+
+/-- The products against `gemm` with the full symmetric matrix: zero up to rounding. -/
+def symmResidual (m n : Nat) (uplo : Uplo) : Float :=
+  let S (k : Nat) : Mat k k := .ofFn fun i j =>
+    let T := triM k 1 0 .upper
+    (if i.val ≤ j.val then T[(i.val, j.val)] else T[(j.val, i.val)]) / 3
+  let B := matThirds m n 2
+  let C := matThirds m n 3
+  let r := Mat.symm uplo 1.5 (S m) B 0.5 C
+  let s := Mat.symmRight uplo 1.5 (S n) B 0.5 C
+  let r' := Mat.gemm 1.5 (S m) B 0.5 C
+  let s' := Mat.gemm 1.5 B (S n) 0.5 C
+  ((r.toList.zip r'.toList) ++ (s.toList.zip s'.toList)).foldl
+    (fun s (x, y) => max s (x - y).abs) 0
+
+#guard symmResidual 30 20 .lower < 1e-12 && symmResidual 30 20 .upper < 1e-12
+
+/-- Whether `symm` and `symmRight` update an unshared `C` in place. -/
+def symmInPlace (n : Nat) : Bool :=
+  let (p, C) := withAddr (matLd n n 2 (n + 1) 3)
+  let (q, C') := withAddr (mat n n 3)
+  let (r, C'') := withAddr (mat n n 4)
+  let (s, C₃) := withAddr (mat n n 5)
+  BLASTest.addr (Mat.symm .lower 1 (triM n) (mat n n 1) 1 C).data == p &&
+    BLASTest.addr (Mat.symm .upper 2 (triM n 0 0 .upper) (mat n n 1) 0 C₃).data == s &&
+    BLASTest.addr (Mat.symmRight .upper 2 (triM n 0 0 .upper) (mat n n 1) 1 C').data == q &&
+    BLASTest.addr (Mat.symmRight .lower 2 (triM n) (mat n n 1) 0.5 C'').data == r
+
+#guard symmInPlace 8
+
+/-! ## `syr2k` and `syr2kT` -/
+
+/-- The loops of the reference BLAS for `syr2k`, with `trans = 'N'` (or `'T'` when `t`). -/
+def syr2kRef (t : Bool) (uplo : Uplo) (α : Float) (A B : Mat p q) (β : Float) (C : Mat n n) :
+    List Float := Id.run do
+  let k := if t then p else q
+  let mut c := C.toList.toArray
+  if n == 0 || ((α == 0 || k == 0) && β == 1) then return c.toList
+  let rows (j : Nat) := (List.range n).filter (inTri uplo · j)
+  if α == 0 then
+    for j in List.range n do
+      for i in rows j do
+        c := c.set! (i + n * j) (if β == 0 then 0 else β * c[i + n * j]!)
+    return c.toList
+  let a (i j : Nat) := A[(i, j)]?.getD 0
+  let b (i j : Nat) := B[(i, j)]?.getD 0
+  for j in List.range n do
+    if !t then
+      if β == 0 then
+        for i in rows j do c := c.set! (i + n * j) 0
+      else if β != 1 then
+        for i in rows j do c := c.set! (i + n * j) (β * c[i + n * j]!)
+      for l in List.range k do
+        if a j l != 0 || b j l != 0 then
+          let t₁ := α * b j l
+          let t₂ := α * a j l
+          for i in rows j do
+            c := c.set! (i + n * j) (c[i + n * j]! + a i l * t₁ + b i l * t₂)
+    else
+      for i in rows j do
+        let mut t₁ : Float := 0
+        let mut t₂ : Float := 0
+        for l in List.range k do
+          t₁ := t₁ + a l i * b l j
+          t₂ := t₂ + b l i * a l j
+        c := c.set! (i + n * j)
+          (if β == 0 then α * t₁ + α * t₂ else β * c[i + n * j]! + α * t₁ + α * t₂)
+  return c.toList
+
+/--
+Whether `syr2k` and `syr2kT` match the reference loops bit for bit, on packed operands and on
+operands with leading dimensions, don't read `C` when `β = 0`, and leave the other triangle and the
+rest of `C`'s array unchanged.
+-/
+def syr2kMatches (n k : Nat) (uplo : Uplo) (α β : Float) : Bool :=
+  let nan : Float := 0 / 0
+  let A := matThirds n k 1
+  let B := matThirds n k 4
+  let AT := matThirds k n 1
+  let BT := matThirds k n 4
+  let C₃ := matThirds n n 3
+  let C : Mat n n := .ofFn fun i j =>
+    if inTri uplo i.val j.val then C₃[(i.val, j.val)] else nan
+  let C₀ : Mat n n := .ofFn fun i j =>
+    if inTri uplo i.val j.val && β == 0 then nan else C[(i.val, j.val)]
+  let r := syr2kRef false uplo α A B β C
+  let rT := syr2kRef true uplo α AT BT β C
+  let D := Mat.syr2k uplo α (ldOf' A) (ldOf' B) β (ldOf' C₀)
+  let E := Mat.syr2kT uplo α (ldOf' AT) (ldOf' BT) β (ldOf' C₀)
+  bits (Mat.syr2k uplo α A B β C) == listBits r &&
+    bits (Mat.syr2kT uplo α AT BT β C) == listBits rT &&
+    bits D == listBits r && bits E == listBits rT &&
+    outside D == outside (ldOf' C₀) && outside E == outside (ldOf' C₀)
+
+#guard [Uplo.lower, .upper].all fun u =>
+  syr2kMatches 5 3 u 1.5 0.5 && syr2kMatches 1 1 u 2 3 && syr2kMatches 17 13 u (-0.25) 2 &&
+    syr2kMatches 40 7 u 1 1 && syr2kMatches 5 3 u 0 0.5 && syr2kMatches 5 3 u (1 / 3) 0 &&
+    syr2kMatches 5 3 u 0 0 && syr2kMatches 5 3 u 0 1 && syr2kMatches 0 3 u 1 1 &&
+    syr2kMatches 3 0 u 1 1 && syr2kMatches 3 0 u 2 0.5 && syr2kMatches 33 20 u (1 / 7) 0
+
+-- `syr2k` skips the terms with `A[j, l] = B[j, l] = 0`, so the infinities in `A[1, 0]` and
+-- `B[1, 0]` don't reach `C[1, 0]`.
+#guard
+  let A : Mat 2 1 := .ofPMat ⟨.ofList [0, 1 / 0], by decide⟩
+  let C := Mat.syr2k .lower 1 A A 1 (mat 2 2 3)
+  C[(1, 0)] == (mat 2 2 3)[(1, 0)] && C[(1, 1)] == 1 / 0
+
+-- `syr2kT` leaves `C` unchanged when `k = 0` and `β = 1`, even a `-0`.
+#guard
+  let C : Mat 1 1 := .ofFn fun _ _ => -0
+  (Mat.syr2kT .upper 2 (mat 0 1) (mat 0 1) 1 C)[(0, 0)].toBits == (-0 : Float).toBits
+
+/-- The products against `gemm`: zero up to rounding. -/
+def syr2kResidual (n k : Nat) (uplo : Uplo) : Float :=
+  let A := matThirds n k 1
+  let B := matThirds n k 4
+  let C := matThirds n n 3
+  let g := Mat.gemm 1.5 B (Mat.transpose A) 1 (Mat.gemm 1.5 A (Mat.transpose B) 0.5 C)
+  let D := Mat.syr2k uplo 1.5 A B 0.5 C
+  let E := Mat.syr2kT uplo 1.5 (Mat.transpose A) (Mat.transpose B) 0.5 C
+  (List.range n).foldl (fun s j => (List.range n).foldl (fun s i =>
+    if inTri uplo i j then max s (max ((D[(i, j)]?.getD 0) - (g[(i, j)]?.getD 0)).abs
+      ((E[(i, j)]?.getD 0) - (g[(i, j)]?.getD 0)).abs) else s) s) 0
+
+#guard syr2kResidual 30 20 .lower < 1e-12 && syr2kResidual 30 20 .upper < 1e-12
+
+/-- Whether `syr2k` and `syr2kT` update an unshared `C` in place. -/
+def syr2kInPlace (n : Nat) : Bool :=
+  let (p, C) := withAddr (matLd n n 2 (n + 1) 3)
+  let (q, C') := withAddr (mat n n 3)
+  BLASTest.addr (Mat.syr2k .lower 1 (mat n 5 1) (mat n 5 2) 1 C).data == p &&
+    BLASTest.addr (Mat.syr2kT .upper 1 (mat 5 n 1) (mat 5 n 2) 1 C').data == q
+
+#guard syr2kInPlace 8
+
+/-! ## `gemmtr`, `gemmtrTN`, `gemmtrNT` and `gemmtrTT` -/
+
+/-- The loops of the reference BLAS for `gemmtr`, with `transa = 'T'` when `ta` and `transb = 'T'`
+when `tb`. -/
+def gemmtrRef (ta tb : Bool) (uplo : Uplo) (α : Float) (A : Mat p q) (B : Mat r s) (β : Float)
+    (C : Mat n n) : List Float := Id.run do
+  let k := if ta then p else q
+  let mut c := C.toList.toArray
+  if n == 0 then return c.toList
+  let rows (j : Nat) := (List.range n).filter (inTri uplo · j)
+  if α == 0 then
+    for j in List.range n do
+      for i in rows j do
+        c := c.set! (i + n * j) (if β == 0 then 0 else β * c[i + n * j]!)
+    return c.toList
+  let a (i l : Nat) := if ta then A[(l, i)]?.getD 0 else A[(i, l)]?.getD 0
+  let b (l j : Nat) := if tb then B[(j, l)]?.getD 0 else B[(l, j)]?.getD 0
+  for j in List.range n do
+    if !ta then
+      if β == 0 then
+        for i in rows j do c := c.set! (i + n * j) 0
+      else if β != 1 then
+        for i in rows j do c := c.set! (i + n * j) (β * c[i + n * j]!)
+      for l in List.range k do
+        let t := α * b l j
+        for i in rows j do c := c.set! (i + n * j) (c[i + n * j]! + t * a i l)
+    else
+      for i in rows j do
+        let mut t : Float := 0
+        for l in List.range k do t := t + a i l * b l j
+        c := c.set! (i + n * j) (if β == 0 then α * t else α * t + β * c[i + n * j]!)
+  return c.toList
+
+/--
+Whether the four `gemmtr` forms match the reference loops bit for bit, on packed operands and on
+operands with leading dimensions, don't read `C` when `β = 0`, and leave the other triangle and the
+rest of `C`'s array unchanged.
+-/
+def gemmtrMatches (n k : Nat) (uplo : Uplo) (α β : Float) : Bool :=
+  let nan : Float := 0 / 0
+  let A := matThirds n k 1
+  let AT := matThirds k n 1
+  let B := matThirds k n 4
+  let BT := matThirds n k 4
+  let C₃ := matThirds n n 3
+  let C : Mat n n := .ofFn fun i j =>
+    if inTri uplo i.val j.val then C₃[(i.val, j.val)] else nan
+  let C₀ : Mat n n := .ofFn fun i j =>
+    if inTri uplo i.val j.val && β == 0 then nan else C[(i.val, j.val)]
+  let r := gemmtrRef false false uplo α A B β C
+  let rTN := gemmtrRef true false uplo α AT B β C
+  let rNT := gemmtrRef false true uplo α A BT β C
+  let rTT := gemmtrRef true true uplo α AT BT β C
+  let Ds := [Mat.gemmtr uplo α (ldOf' A) (ldOf' B) β (ldOf' C₀),
+    Mat.gemmtrTN uplo α (ldOf' AT) (ldOf' B) β (ldOf' C₀),
+    Mat.gemmtrNT uplo α (ldOf' A) (ldOf' BT) β (ldOf' C₀),
+    Mat.gemmtrTT uplo α (ldOf' AT) (ldOf' BT) β (ldOf' C₀)]
+  bits (Mat.gemmtr uplo α A B β C) == listBits r &&
+    bits (Mat.gemmtrTN uplo α AT B β C) == listBits rTN &&
+    bits (Mat.gemmtrNT uplo α A BT β C) == listBits rNT &&
+    bits (Mat.gemmtrTT uplo α AT BT β C) == listBits rTT &&
+    (Ds.map bits) == [r, rTN, rNT, rTT].map listBits &&
+    Ds.all fun D => outside D == outside (ldOf' C₀)
+
+#guard [Uplo.lower, .upper].all fun u =>
+  gemmtrMatches 5 3 u 1.5 0.5 && gemmtrMatches 1 1 u 2 3 && gemmtrMatches 17 13 u (-0.25) 2 &&
+    gemmtrMatches 40 7 u 1 1 && gemmtrMatches 5 3 u 0 0.5 && gemmtrMatches 5 3 u (1 / 3) 0 &&
+    gemmtrMatches 5 3 u 0 0 && gemmtrMatches 5 3 u 0 1 && gemmtrMatches 0 3 u 1 1 &&
+    gemmtrMatches 3 0 u 1 1 && gemmtrMatches 3 0 u 2 0.5 && gemmtrMatches 33 20 u (1 / 7) 0
+
+-- Unlike `syrkT`, the reference `gemmtr` has no quick return for `k = 0` and `β = 1`: with
+-- `transa = 'T'`, it writes `α * 0 + 1 * C[i, j]`, which turns a `-0` into `0`.
+#guard
+  let C : Mat 1 1 := .ofFn fun _ _ => -0
+  (Mat.gemmtrTN .upper 2 (mat 0 1) (mat 0 1) 1 C)[(0, 0)].toBits == (0 : Float).toBits &&
+    (Mat.gemmtr .upper 2 (mat 1 0) (mat 0 1) 1 C)[(0, 0)].toBits == (-0 : Float).toBits
+
+/-- The products against `gemm`: zero up to rounding. -/
+def gemmtrResidual (n k : Nat) (uplo : Uplo) : Float :=
+  let A := matThirds n k 1
+  let B := matThirds k n 4
+  let C := matThirds n n 3
+  let g := Mat.gemm 1.5 A B 0.5 C
+  let Ds := [Mat.gemmtr uplo 1.5 A B 0.5 C, Mat.gemmtrTN uplo 1.5 (Mat.transpose A) B 0.5 C,
+    Mat.gemmtrNT uplo 1.5 A (Mat.transpose B) 0.5 C,
+    Mat.gemmtrTT uplo 1.5 (Mat.transpose A) (Mat.transpose B) 0.5 C]
+  Ds.foldl (fun s D => (List.range n).foldl (fun s j => (List.range n).foldl (fun s i =>
+    if inTri uplo i j then max s ((D[(i, j)]?.getD 0) - (g[(i, j)]?.getD 0)).abs else s) s) s) 0
+
+#guard gemmtrResidual 30 20 .lower < 1e-12 && gemmtrResidual 30 20 .upper < 1e-12
+
+/-- Whether `gemmtr` and `gemmtrTN` update an unshared `C` in place. -/
+def gemmtrInPlace (n : Nat) : Bool :=
+  let (p, C) := withAddr (matLd n n 2 (n + 1) 3)
+  let (q, C') := withAddr (mat n n 3)
+  BLASTest.addr (Mat.gemmtr .lower 1 (mat n 5 1) (mat 5 n 2) 1 C).data == p &&
+    BLASTest.addr (Mat.gemmtrTN .upper 1 (mat 5 n 1) (mat 5 n 2) 1 C').data == q
+
+#guard gemmtrInPlace 8
