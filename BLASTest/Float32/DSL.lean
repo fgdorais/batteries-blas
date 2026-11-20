@@ -90,6 +90,86 @@ example (A : Mat m m) (B : Mat m n) :
 example (A : Mat n n) (B : Mat m n) :
     blas%(B := α • B * A.unitUpper⁻¹) = Mat.trsmRight .upper .unit α A B := by simp
 
+example (A : Mat n n) (x : Vec n) :
+    blas%(x := A.lowerᵀ⁻¹ * x) = Mat.trsvT .lower .nonUnit A x := by simp
+
+example (A : Mat m m) (B : Mat m n) :
+    blas%(B := α • A.unitUpperᵀ⁻¹ * B) = Mat.trsmT .upper .unit α A B := by simp
+
+example (A : Mat m m) (B : Mat m n) :
+    blas%(B := A.upperᵀ⁻¹ * B) = Mat.trsmT .upper .nonUnit 1 A B := by simp
+
+example (A : Mat n n) (B : Mat m n) :
+    blas%(B := B * A.lowerᵀ⁻¹) = Mat.trsmRightT .lower .nonUnit 1 A B := by simp
+
+-- A product over one of its operands, by a triangle, is `trmv` or `trmm`.
+example (A : Mat n n) (x : Vec n) : blas%(x := A.upper * x) = Mat.trmv .upper .nonUnit A x := by
+  simp
+
+example (A : Mat n n) (x : Vec n) : blas%(x := A.unitLowerᵀ * x) = Mat.trmvT .lower .unit A x :=
+  by simp
+
+example (A : Mat m m) (B : Mat m n) :
+    blas%(B := α • A.lower * B) = Mat.trmm .lower .nonUnit α A B := by simp
+
+example (A : Mat m m) (B : Mat m n) : blas%(B := A.upperᵀ * B) = Mat.trmmT .upper .nonUnit 1 A B :=
+  by simp
+
+example (A : Mat n n) (B : Mat m n) :
+    blas%(B := α • B * A.unitUpper) = Mat.trmmRight .upper .unit α A B := by simp
+
+example (A : Mat n n) (B : Mat m n) :
+    blas%(B := B * A.lowerᵀ) = Mat.trmmRightT .lower .nonUnit 1 A B := by simp
+
+-- A symmetric matrix is `symv`, `symm` or `symmRight`.
+example (A : Mat n n) (x y : Vec n) :
+    blas%(y := α • A.symLower * x + β • y) = Mat.symv .lower α A x β y := by simp
+
+example (A : Mat m m) (B C : Mat m n) :
+    blas%(C += A.symUpper * B) = Mat.symm .upper 1 A B 1 C := by simp
+
+example (A : Mat n n) (B C : Mat m n) :
+    blas%(C := α • B * A.symLower) = Mat.symmRight .lower α A B 0 C := by simp
+
+-- A rank-one update is `ger`.
+example (x : Vec m) (y : Vec n) (A : Mat m n) : blas%(A += α • x * yᵀ) = Mat.ger α x y A := by
+  simp
+
+example (x : Vec m) (y : Vec n) (A : Mat m n) : blas%(A -= x * yᵀ) = Mat.ger (-1) x y A := by
+  simp
+
+-- A triangle target `C.lower` updates only that triangle of `C`.
+example (A : Mat n k) (B : Mat k n) (C : Mat n n) :
+    blas%(C.lower := α • A * B + β • C.lower) = Mat.gemmtr .lower α A B β C := by simp
+
+example (A B : Mat k n) (C : Mat n n) :
+    blas%(C.upper += Aᵀ * B) = Mat.gemmtrTN .upper 1 A B 1 C := by simp
+
+example (A B : Mat n k) (C : Mat n n) :
+    blas%(C.upper := A * Bᵀ) = Mat.gemmtrNT .upper 1 A B 0 C := by simp
+
+example (A : Mat k n) (B : Mat n k) (C : Mat n n) :
+    blas%(C.lower := Aᵀ * Bᵀ - C.lower) = Mat.gemmtrTT .lower 1 A B (-1) C := by simp
+
+example (A : Mat n k) (C : Mat n n) :
+    blas%(C.lower := α • A * Aᵀ + β • C.lower) = Mat.syrk .lower α A β C := by simp
+
+example (A : Mat k n) (C : Mat n n) :
+    blas%(C.upper -= Aᵀ * A) = Mat.syrkT .upper (-1) A 1 C := by simp
+
+example (x : Vec n) (A : Mat n n) : blas%(A.lower += α • x * xᵀ) = Mat.syr .lower α x A := by
+  simp
+
+example (A B : Mat n k) (C : Mat n n) :
+    blas%(C.lower := α • A * Bᵀ + α • B * Aᵀ + β • C.lower) = Mat.syr2k .lower α A B β C := by
+  simp
+
+example (A B : Mat k n) (C : Mat n n) :
+    blas%(C.upper := Aᵀ * B + Bᵀ * A) = Mat.syr2kT .upper 1 A B 0 C := by simp
+
+example (x y : Vec n) (A : Mat n n) :
+    blas%(A.upper += α • x * yᵀ + α • y * xᵀ) = Mat.syr2 .upper α x y A := by simp
+
 -- A subtracted summand has the negated scalar.
 example (A : Mat m n) (x : Vec n) (y : Vec m) : blas%(y := A * x - y) = Mat.gemv 1 A x (-1) y :=
   by simp
@@ -196,6 +276,41 @@ end
   let x : Vec 2 := .ofList [2, 3]
   (blas%(x := A.lower⁻¹ * x)).toList == [1, 2]
 
+-- `[[2, 1], [0, 1]]⁻¹ * [4, 2] = [1, 2]`, by the transpose of the lower triangle of
+-- `[[2, 9], [1, 1]]`, and `[[2, 9], [0, 1]] * [1, 1] = [11, 1]`, by its upper triangle.
+#guard
+  let A : Mat 2 2 := .ofPMat ⟨.ofList [2, 1, 9, 1], by decide⟩
+  let x : Vec 2 := .ofList [4, 2]
+  let y : Vec 2 := .ofList [1, 1]
+  (blas%(x := A.lowerᵀ⁻¹ * x)).toList == [1, 2] && (blas%(y := A.upper * y)).toList == [11, 1]
+
+-- `[[2, 1], [1, 1]] * [1, 2] = [4, 3]`, the symmetric matrix of the lower triangle.
+#guard
+  let A : Mat 2 2 := .ofPMat ⟨.ofList [2, 1, 9, 1], by decide⟩
+  let x : Vec 2 := .ofList [1, 2]
+  let y : Vec 2 := .ofList [0, 0]
+  (blas%(y := A.symLower * x)).toList == [4, 3]
+
+-- `[1, 2] * [3, 4]ᵀ = [[3, 4], [6, 8]]`, by `ger`.
+#guard
+  let x : Vec 2 := .ofList [1, 2]
+  let y : Vec 2 := .ofList [3, 4]
+  let A : Mat 2 2 := .ofPMat ⟨.ofList [0, 0, 0, 0], by decide⟩
+  (blas%(A += x * yᵀ)).toList == [3, 6, 4, 8]
+
+-- `A * Aᵀ = [[5, 11], [11, 25]]` for `A = [[1, 2], [3, 4]]`, over the lower triangle of `C` only,
+-- and `x * yᵀ + y * xᵀ = [[0, 1], [1, 0]]`, over the upper triangle only.
+#guard Id.run do
+  let A : Mat 2 2 := .ofPMat ⟨.ofList [1, 3, 2, 4], by decide⟩
+  let x : Vec 2 := .ofList [1, 0]
+  let y : Vec 2 := .ofList [0, 1]
+  let mut C : Mat 2 2 := .ofPMat ⟨.ofList [7, 7, 7, 7], by decide⟩
+  let mut D : Mat 2 2 := .ofPMat ⟨.ofList [0, 0, 0, 0], by decide⟩
+  blas% do
+    C.lower := A * Aᵀ
+    D.upper += x * yᵀ + y * xᵀ
+  return C.toList == [5, 11, 7, 25] && D.toList == [0, 0, 1, 0]
+
 /-! ## In place
 
 An update compiles to its routine's call, so it updates its target in place when the target's
@@ -204,7 +319,9 @@ array is not shared. -/
 /-- The address of the array of `x`, with `x`, taken before `x` goes on to an update. -/
 @[noinline] def withAddr (x : Vec n) : USize × Vec n := (BLASTest.addr x.data, x)
 
-/-- `gemv`, `gemvT`, `axpy` and `trsv` by `blas%` update `y` in place. -/
+/--
+`gemv`, `gemvT`, `axpy`, `trsv`, `trsvT`, `trmvT` and `symv` by `blas%` update `y` in place.
+-/
 def inPlace (m : Nat) : Bool := Id.run do
   let A : Mat m m := .ofFn fun i j => ((i.val * 7 + j.val * 13) % 11).toFloat32 - 5
   let x : Vec m := .ofFn fun i => (i.val % 9).toFloat32 - 4
@@ -214,6 +331,9 @@ def inPlace (m : Nat) : Bool := Id.run do
   blas% y += 2 • Aᵀ * x
   blas% y += 2 • x
   blas% y := A.unitLower⁻¹ * y
+  blas% y := A.unitUpperᵀ⁻¹ * y
+  blas% y := A.upperᵀ * y
+  blas% y += A.symLower * x
   return BLASTest.addr y.data == p
 
 #guard inPlace 8
@@ -228,9 +348,37 @@ def inPlaceBlock (m : Nat) : Bool :=
     y += 2 • Aᵀ * x
     y += 2 • x
     y := A.unitLower⁻¹ * y
+    y := A.unitUpperᵀ⁻¹ * y
+    y := A.upperᵀ * y
+    y += A.symLower * x
   BLASTest.addr z.data == p
 
 #guard inPlaceBlock 8
+
+/-- The address of the array of `C`, with `C`, taken before `C` goes on to an update. -/
+@[noinline] def withMatAddr (C : Mat m n) : USize × Mat m n := (BLASTest.addr C.data, C)
+
+/--
+`ger`, `trmm`, `trsmT`, `symm`, and `syrk`, `syr2k` and `gemmtr` over a triangle, by `blas%`,
+update `C` in place.
+-/
+def inPlaceMat (m : Nat) : Bool := Id.run do
+  let A : Mat m m := .ofFn fun i j => ((i.val * 7 + j.val * 13) % 11).toFloat32 - 5
+  let B : Mat m m := .ofFn fun i j => ((i.val * 5 + j.val * 3) % 7).toFloat32 - 3
+  let x : Vec m := .ofFn fun i => (i.val % 9).toFloat32 - 4
+  let (p, C) := withMatAddr (m := m) (.ofFn fun i j => ((i.val + j.val) % 5).toFloat32)
+  let mut C := C
+  blas% do
+    C += 2 • x * xᵀ
+    C := 2 • A.lower * C
+    C := A.unitUpperᵀ⁻¹ * C
+    C := A.symLower * B + 3 • C
+    C.lower := 2 • A * Aᵀ + C.lower
+    C.upper += A * Bᵀ + B * Aᵀ
+    C.lower -= Aᵀ * B
+  return BLASTest.addr C.data == p
+
+#guard inPlaceMat 8
 
 /-! ## Updates that no single routine computes -/
 
@@ -275,3 +423,27 @@ error: blas%: `y` occurs twice; combine its scalars
 -/
 #guard_msgs in
 example (x y : Vec 2) : Vec 2 := blas%(y := x + y + y)
+
+/--
+error: blas%: no single BLAS routine computes this update of `C`
+-/
+#guard_msgs in
+example (A B : Mat 2 2) (C : Mat 2 2) : Mat 2 2 := blas%(C := A * Bᵀ + B * Aᵀ)
+
+/--
+error: blas%: no single BLAS routine computes this update of `C.lower`
+-/
+#guard_msgs in
+example (A B : Mat 2 2) (C : Mat 2 2) : Mat 2 2 :=
+  blas%(C.lower := (2 : Float32) • A * Bᵀ + B * Aᵀ)
+
+-- A product over one of its operands needs a triangle: `gemv` doesn't update its operand.
+/--
+error: failed to synthesize instance of type class
+  MulIn (Mat 2 2) (Vec 2)
+
+Hint: Type class instance resolution failures can be inspected with the
+`set_option trace.Meta.synthInstance true` command.
+-/
+#guard_msgs (whitespace := lax) in
+example (A : Mat 2 2) (x : Vec 2) : Vec 2 := blas%(x := A * x)
