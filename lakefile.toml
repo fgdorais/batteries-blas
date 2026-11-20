@@ -9,7 +9,7 @@ leanOptions = { linter.missingDocs = true, linter.extra = true }
 [[require]]
 name = "lean4-scalar-arrays"
 git = "https://github.com/fgdorais/lean4-scalar-arrays"
-rev = "v1.3.0"
+rev = "v1.6.0"
 
 [[lean_lib]]
 name = "BLAS"
