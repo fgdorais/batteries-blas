@@ -13,6 +13,8 @@ rev = "v1.3.0"
 
 [[lean_lib]]
 name = "BLAS"
+# `BLAS.Notation` is not imported by the root `BLAS`, so it needs its own glob.
+globs = ["BLAS", "BLAS.Notation"]
 # Lets the interpreter run scalar-arrays' `extern` C code in downstream files, for `#eval` and
 # `#guard`.
 precompileModules = true
