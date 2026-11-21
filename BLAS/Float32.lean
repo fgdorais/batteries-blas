@@ -28,7 +28,12 @@ public import BLAS.Float32.Symm
 public import BLAS.Float32.Syr
 public import BLAS.Float32.Syr2k
 public import BLAS.Float32.Gemmtr
+public import BLAS.Float32.Gbmv
+public import BLAS.Float32.Sbmv
+public import BLAS.Float32.Tbmv
+public import BLAS.Float32.Tbsv
 public import BLAS.Float32.View
+public import BLAS.Float32.BandView
 
 /-!
 # BLAS on `Float32`
