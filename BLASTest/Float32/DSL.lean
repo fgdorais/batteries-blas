@@ -131,6 +131,28 @@ example (A : Mat m m) (B C : Mat m n) :
 example (A : Mat n n) (B C : Mat m n) :
     blas%(C := α • B * A.symLower) = Mat.symmRight .lower α A B 0 C := by simp
 
+-- A band view is `gbmv`, `gbmvT`, `sbmv`, `tbmv`, `tbmvT`, `tbsv` or `tbsvT`.
+example (A : Mat 4 n) (x : Vec n) (y : Vec m) :
+    blas%(y := α • A.band m 1 2 * x + β • y) = Mat.gbmv 1 2 α A x β y := by simp
+
+example (A : Mat 4 n) (x : Vec m) (y : Vec n) :
+    blas%(y += (A.band m 2 1)ᵀ * x) = Mat.gbmvT 2 1 1 A x 1 y := by simp
+
+example (A : Mat (k + 1) n) (x y : Vec n) :
+    blas%(y := α • A.symUpperBand * x + β • y) = Mat.sbmv .upper α A x β y := by simp
+
+example (A : Mat (k + 1) n) (x : Vec n) :
+    blas%(x := A.lowerBand * x) = Mat.tbmv .lower .nonUnit A x := by simp
+
+example (A : Mat (k + 1) n) (x : Vec n) :
+    blas%(x := A.unitUpperBandᵀ * x) = Mat.tbmvT .upper .unit A x := by simp
+
+example (A : Mat (k + 1) n) (x : Vec n) :
+    blas%(x := A.upperBand⁻¹ * x) = Mat.tbsv .upper .nonUnit A x := by simp
+
+example (A : Mat (k + 1) n) (x : Vec n) :
+    blas%(x := A.unitLowerBandᵀ⁻¹ * x) = Mat.tbsvT .lower .unit A x := by simp
+
 -- A rank-one update is `ger`.
 example (x : Vec m) (y : Vec n) (A : Mat m n) : blas%(A += α • x * yᵀ) = Mat.ger α x y A := by
   simp

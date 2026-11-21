@@ -7,7 +7,8 @@ Basic Linear Algebra Subprograms written entirely in Lean 4, on the unboxed arra
 The routines come with proved specifications; their speed is measured, not promised.
 
 It has, on `Float64` and `Float32`, the BLAS Level 1 routines on strided vectors, `gemv`, `ger`,
-`symv`, `syr`, `syr2` and `trsv`, `trmv` (with their transposed forms), and `gemm`, `syrk`, `syr2k`,
+`symv`, `syr`, `syr2` and `trsv`, `trmv` (with their transposed forms), the band routines `gbmv`,
+`sbmv`, `tbmv` and `tbsv` (with theirs), and `gemm`, `syrk`, `syr2k`,
 `trsm` and `trmm` (with theirs) and `symm` on matrices with an offset and a leading dimension, as
 well as the mixed-precision `dsdot` and `sdsdot`. The `Float32` routines are in `BLAS.Float32`, with
 the same names and specifications as those of `BLAS.Float64`, on `Float32Array`.
@@ -169,6 +170,38 @@ followed by the terms `α * x[j] * A[(i, j)]` for `j > i`; for the lower triangl
 `syr` and `syr2` update only the triangle `uplo` of `A`, a column at a time, by the loops of the
 reference `dsyr` and `dsyr2`, and as there skip the columns with `x[j] = 0` (with `x[j] = y[j] = 0`
 for `syr2`).
+
+The band routines take a band matrix in the band storage of the reference BLAS, a plain `Mat`
+with a row per diagonal: `gbmv` and `gbmvT` take an `m × n` matrix with `kl` subdiagonals and `ku`
+superdiagonals as `A : Mat (kl + ku + 1) n`, whose row `ku + i - j` of column `j` holds the element
+`i, j`, and `sbmv`, `tbmv`, `tbmvT`, `tbsv` and `tbsvT` take a symmetric or triangular matrix with
+`k` off-diagonals by one triangle as `A : Mat (k + 1) n`, in row `k + i - j` (upper) or `i - j`
+(lower). They read only the band, with the loops of the reference `dgbmv`, `dsbmv`, `dtbmv` and
+`dtbsv` in their order, and their specifications are those of `gemv`, `symv`, `trmv` and `trsv`
+restricted to the band:
+
+| Routine | Result | Specification |
+|---|---|---|
+| `gbmv kl ku α A x β y` | `α * A * x + β * y` for a band `A`, over `y` | `getElem_gbmv` |
+| `gbmvT kl ku α A x β y` | `α * Aᵀ * x + β * y` for a band `A`, over `y` | `getElem_gbmvT` |
+| `sbmv uplo α A x β y` | `α * A * x + β * y` for a symmetric band `A`, over `y` | `getElem_sbmv_upper`, `getElem_sbmv_lower` |
+| `tbmv uplo diag A x` | `A * x` for a triangular band `A`, over `x` | `getElem_tbmv_upper`, `getElem_tbmv_lower` |
+| `tbmvT uplo diag A x` | `Aᵀ * x` for a triangular band `A`, over `x` | `getElem_tbmvT_upper`, `getElem_tbmvT_lower` |
+| `tbsv uplo diag A x` | `A⁻¹ * x` for a triangular band `A`, over `x` | `getElem_tbsv_upper`, `getElem_tbsv_lower` |
+| `tbsvT uplo diag A x` | `A⁻ᵀ * x` for a triangular band `A`, over `x` | `getElem_tbsvT_upper`, `getElem_tbsvT_lower` |
+
+For instance, `(gbmv kl ku α A x β y)[i]` is `betaMul β y[i]` plus the terms
+`α * x[j] * A[(ku + i - j, j)]` for `j` from `i - kl` up to `min (n - 1) (i + ku)`, and
+`y = tbsv .lower d A x` satisfies
+
+```lean
+y[i] = d.apply (Nat.fold (min i k) (fun t _ s =>
+  s - y[i - min i k + t] * A[(min i k - t, i - min i k + t)]) x[i]) A[(0, i)]
+```
+
+`blas%` selects them from the views `A.band m kl ku`, `A.upperBand`, `A.unitLowerBand`, …, and
+`A.symUpperBand`, `A.symLowerBand`, as it does `gemv`, `trmv`, `trsv` and `symv` from `A`,
+`A.upper`, … and `A.symUpper`.
 
 The other Level 3 routines also run directly on any `Mat`, update their last argument in place
 when its array is not shared, and leave the elements outside the result unchanged:

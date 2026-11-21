@@ -51,7 +51,10 @@ a transpose `Aᵀ` and a vector `gemvT`, two matrices `gemm`, and transposes `ge
 `gemmNT` (`A * Bᵀ`) and `gemmTT` (`Aᵀ * Bᵀ`); a symmetric view `A.symLower` is `symv`, `symm` or
 `symmRight`, and a triangle target `C.lower` is `gemmtr`, `gemmtrTN`, `gemmtrNT` or `gemmtrTT`. A
 triangle `T` is a view such as `A.lower` or `A.unitUpper`, or its transpose `A.lowerᵀ`, and its
-inverse is `A.lower⁻¹` or `A.lowerᵀ⁻¹`. A missing `α` is `1`, a missing `β • y` is `β = 0`, which
+inverse is `A.lower⁻¹` or `A.lowerᵀ⁻¹`. The band views select the band routines: `A.band m kl ku`
+and its transpose are `gbmv` and `gbmvT`, `A.symUpperBand` and `A.symLowerBand` are `sbmv`, and a
+triangular band `A.upperBand`, `A.unitLowerBand`, … is `tbmv` or `tbsv`, or `tbmvT` or `tbsvT` for
+its transpose (`BLAS.Float64.BandView`). A missing `α` is `1`, a missing `β • y` is `β = 0`, which
 sets `y` to `0` without reading it, as in the reference BLAS, and a bare `y` is `β = 1`. The
 summands may come in any order, and a subtracted summand `- α • …` has the scalar `-α` (`-1` if it
 has none). Floating-point negation is exact, and `a - b` is `a + (-b)`, so `y := A * x - y` is

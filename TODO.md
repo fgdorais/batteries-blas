@@ -88,6 +88,10 @@ Changes that would reorder them, such as partial sums in `dot`, `asum` and `nrm2
   elements, as `gemv` does. Each element keeps its order of operations. Not measured yet.
 - [ ] `gemv` with strided `x` and `y` is 1.05–3× behind, and 2.4–7.4× behind in `Float32`, where
   Netlib is also up to 6% faster at 256 and 1024. Not investigated yet.
+- [ ] The band routines `gbmv`, `gbmvT`, `sbmv`, `tbmv`, `tbmvT`, `tbsv` and `tbsvT` are not
+  benchmarked yet, against `scripts/cblas_bench.c` or otherwise. They run the loops of the reference
+  BLAS one column at a time; `gbmv` and `sbmv` could take two or four columns per pass, as `gemv`
+  does, with each element's terms in their order.
 - [ ] `gemvT` at 256 is 1.8× behind, and 4.5× in `Float32`, against 1.0–1.1× (1.6–1.7× in
   `Float32`) at 1024 and 2048. Not investigated yet.
 
