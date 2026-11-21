@@ -316,6 +316,158 @@ public theorem iterRange_modifyAt (a : Float64Array) (idx : Nat → Nat) {lo hi 
     simp only [Nat.fold_succ]
 
 /--
+Steps that each `modifyAt` the same indices, distinct and in bounds, by `G j t` at step `j`, where
+`t` is the element at the step `r j`, which the earlier steps leave unchanged, map them by the left
+fold of the `G j t` over `j < n`, with `t` the element before the loop.
+-/
+public theorem iterRange_modifyAt_read (a : Float64Array) (idx : Nat → Nat) {hi : Nat}
+    (hinj : ∀ i, 0 ≤ i → i < hi → ∀ j, 0 ≤ j → j < hi → idx i = idx j → i = j)
+    (hlt : ∀ i, i < hi → idx i < a.size) (r : Nat → Nat) (n : Nat) (hr : ∀ j, j < n → r j < hi)
+    (G : Nat → Float → Nat → Float → Float)
+    (hG : ∀ j' j, j' < j → j < n → ∀ t v, G j' t (r j) v = v) :
+    iterRange (fun j c => c.modifyAt idx 0 hi (G j c[idx (r j)]!)) 0 n a =
+      a.modifyAt idx 0 hi fun i v => Nat.fold n (fun j _ v => G j a[idx (r j)]! i v) v := by
+  induction n with
+  | zero =>
+    rw [iterRange_self, modifyAt_congr a (g' := fun _ v => v) (fun _ _ _ => rfl)
+      (fun _ _ _ => by funext v; simp), modifyAt_id]
+  | succ n ih =>
+    rw [iterRange_succ _ (Nat.zero_le _), ih (fun j hj => hr j (by lia))
+      (fun j' j h₁ h₂ => hG j' j h₁ (by lia)), modifyAt_modifyAt _ _ hinj]
+    have hrn := hr n (by lia)
+    have hfix : ∀ k, k ≤ n → ∀ w, Nat.fold k (fun j _ v => G j a[idx (r j)]! (r n) v) w = w := by
+      intro k
+      induction k with
+      | zero => intro _ w; exact Nat.fold_zero _ _
+      | succ k ihk => intro hk w; rw [Nat.fold_succ, ihk (by lia), hG k n (by lia) (by lia)]
+    have hread : (a.modifyAt idx 0 hi fun i v =>
+        Nat.fold n (fun j _ v => G j a[idx (r j)]! i v) v)[idx (r n)]! = a[idx (r n)]! := by
+      rw [getElem!_pos _ _ (by rw [size_modifyAt]; exact hlt _ hrn),
+        getElem_modifyAt_idx _ _ _ hinj (Nat.zero_le _) hrn, hfix n (Nat.le_refl _),
+        getElem!_pos a _ (hlt _ hrn)]
+    rw [hread]
+    simp only [Nat.fold_succ]
+
+/--
+The values that the steps of `iterRange_modifyAt_self` read: the element at the step `r j` of `a`
+after the steps before `j`, which map it by `G j' (selfRead a idx r G j') (r j)`.
+-/
+@[expose] public def selfRead (a : Float64Array) (idx r : Nat → Nat)
+    (G : Nat → Float → Nat → Float → Float) (j : Nat) : Float :=
+  Nat.fold j (fun j' _hj v => G j' (selfRead a idx r G j') (r j) v) a[idx (r j)]!
+termination_by j
+decreasing_by exact _hj
+
+/--
+Steps that each `modifyAt` the same indices, distinct and in bounds, by `G j t` at step `j`, where
+`t` is the element at the step `r j` when step `j` starts, map them by the left fold of the
+`G j (selfRead a idx r G j)` over `j < n`.
+-/
+public theorem iterRange_modifyAt_self (a : Float64Array) (idx : Nat → Nat) {hi : Nat}
+    (hinj : ∀ i, 0 ≤ i → i < hi → ∀ j, 0 ≤ j → j < hi → idx i = idx j → i = j)
+    (hlt : ∀ i, i < hi → idx i < a.size) (r : Nat → Nat) (n : Nat) (hr : ∀ j, j < n → r j < hi)
+    (G : Nat → Float → Nat → Float → Float) :
+    iterRange (fun j c => c.modifyAt idx 0 hi (G j c[idx (r j)]!)) 0 n a =
+      a.modifyAt idx 0 hi fun i v =>
+        Nat.fold n (fun j _ v => G j (selfRead a idx r G j) i v) v := by
+  induction n with
+  | zero =>
+    rw [iterRange_self, modifyAt_congr a (g' := fun _ v => v) (fun _ _ _ => rfl)
+      (fun _ _ _ => by funext v; simp), modifyAt_id]
+  | succ n ih =>
+    rw [iterRange_succ _ (Nat.zero_le _), ih (fun j hj => hr j (by lia)),
+      modifyAt_modifyAt _ _ hinj]
+    have hrn := hr n (by lia)
+    have hread : (a.modifyAt idx 0 hi fun i v =>
+        Nat.fold n (fun j _ v => G j (selfRead a idx r G j) i v) v)[idx (r n)]! =
+          selfRead a idx r G n := by
+      rw [getElem!_pos _ _ (by rw [size_modifyAt]; exact hlt _ hrn),
+        getElem_modifyAt_idx _ _ _ hinj (Nat.zero_le _) hrn, selfRead,
+        getElem!_pos a _ (hlt _ hrn)]
+    rw [hread]
+    simp only [Nat.fold_succ]
+
+/-- `selfRead` is the element of `a` at a step `r j` that no step before `j` changes. -/
+public theorem selfRead_eq_of_fix (a : Float64Array) (idx r : Nat → Nat)
+    (G : Nat → Float → Nat → Float → Float) {j : Nat}
+    (h : ∀ j', j' < j → ∀ t v, G j' t (r j) v = v) : selfRead a idx r G j = a[idx (r j)]! := by
+  rw [selfRead]
+  have : ∀ m, m ≤ j → ∀ w,
+      Nat.fold m (fun j' (_ : j' < m) v => G j' (selfRead a idx r G j') (r j) v) w = w := by
+    intro m
+    induction m with
+    | zero => intro _ w; exact Nat.fold_zero _ _
+    | succ m ih => intro hm w; rw [Nat.fold_succ, ih (by lia), h m (by lia)]
+  exact this j (Nat.le_refl _) _
+
+/--
+`modifyAt` at distinct indices in bounds maps each element by its value in `a`, which no other step
+changes.
+-/
+public theorem modifyAt_eq_read (a : Float64Array) (idx : Nat → Nat) {lo hi : Nat}
+    (hinj : ∀ i, lo ≤ i → i < hi → ∀ j, lo ≤ j → j < hi → idx i = idx j → i = j)
+    (hlt : ∀ i, lo ≤ i → i < hi → idx i < a.size) (g : Nat → Float → Float) :
+    a.modifyAt idx lo hi g = a.modifyAt idx lo hi fun i _ => g i a[idx i]! := by
+  apply ext_getElem (by simp)
+  intro p hp _
+  by_cases hc : ∃ i, lo ≤ i ∧ i < hi ∧ idx i = p
+  · obtain ⟨i, h₁, h₂, rfl⟩ := hc
+    rw [getElem_modifyAt_idx _ _ _ hinj h₁ h₂ hp, getElem_modifyAt_idx _ _ _ hinj h₁ h₂,
+      getElem!_pos a _ (hlt i h₁ h₂)]
+  · have hne : ∀ i, lo ≤ i → i < hi → idx i ≠ p := fun i h₁ h₂ e => hc ⟨i, h₁, h₂, e⟩
+    rw [getElem_modifyAt_of_forall_ne _ _ _ hne hp, getElem_modifyAt_of_forall_ne _ _ _ hne]
+
+/--
+The values that the steps of `iterRange_write` write: step `k` writes `H k` of the elements when it
+starts, which are `writeRead a idx s H (s q)` at the steps `q` written before, at the step `s q`,
+and those of `a` at the others.
+-/
+@[expose] public def writeRead (a : Float64Array) (idx s : Nat → Nat)
+    (H : Nat → (Nat → Float) → Float) (k : Nat) : Float :=
+  H k fun q => if _h : s q < k then writeRead a idx s H (s q) else a[idx q]!
+termination_by k
+decreasing_by exact _h
+
+/--
+Steps `k < N` that each write `H k` of the elements at the step `p k` of distinct indices in
+bounds, where `p` is a bijection of `[0, hi)` with inverse `s` and `H` reads only the steps below
+`hi`, write `writeRead a idx s H k` at the step `p k`.
+-/
+public theorem iterRange_write (a : Float64Array) (idx : Nat → Nat) {hi : Nat}
+    (hinj : ∀ i, 0 ≤ i → i < hi → ∀ j, 0 ≤ j → j < hi → idx i = idx j → i = j)
+    (hlt : ∀ i, i < hi → idx i < a.size) (p s : Nat → Nat) (hsp : ∀ k, k < hi → s (p k) = k)
+    (hps : ∀ q, q < hi → p (s q) = q) (H : Nat → (Nat → Float) → Float)
+    (hH : ∀ k, k < hi → ∀ get get', (∀ q, q < hi → get q = get' q) → H k get = H k get')
+    {N : Nat} (hN : N ≤ hi) :
+    iterRange (fun k c => c.modifyAt idx 0 hi fun i v =>
+        if i = p k then H k (fun q => c[idx q]!) else v) 0 N a =
+      a.modifyAt idx 0 hi fun i v => if s i < N then writeRead a idx s H (s i) else v := by
+  induction N with
+  | zero =>
+    rw [iterRange_self, modifyAt_congr a (g' := fun _ v => v) (fun _ _ _ => rfl)
+      (fun _ _ _ => by funext v; simp), modifyAt_id]
+  | succ N ih =>
+    rw [iterRange_succ _ (Nat.zero_le _), ih (by lia), modifyAt_modifyAt _ _ hinj]
+    have hval : H N (fun q => (a.modifyAt idx 0 hi fun i v =>
+        if s i < N then writeRead a idx s H (s i) else v)[idx q]!) = writeRead a idx s H N := by
+      rw [writeRead]
+      apply hH N (by lia)
+      intro q hq
+      rw [getElem!_pos _ _ (by rw [size_modifyAt]; exact hlt _ hq),
+        getElem_modifyAt_idx _ _ _ hinj (Nat.zero_le _) hq, getElem!_pos a _ (hlt _ hq)]
+      split <;> (try split) <;> rfl
+    rw [hval]
+    apply modifyAt_congr_fun
+    intro i v _ hi'
+    by_cases h₁ : i = p N
+    · subst h₁
+      rw [hsp N (by lia)]
+      simp
+    · have : s i ≠ N := fun e => h₁ (by rw [← e, hps i hi'])
+      simp only [h₁, ↓reduceIte]
+      split <;> (try split) <;> first | rfl | (exfalso; lia)
+
+/--
 Writing `t` at the step `j` of a stride, then updating the steps from `j + 1` to `n - 1` by `G`,
 as the steps of the stride from `j + 1`, is a `modifyAt` over the steps `j ≤ i < n`: the
 triangular update.
