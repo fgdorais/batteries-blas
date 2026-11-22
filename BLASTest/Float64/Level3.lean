@@ -905,8 +905,7 @@ def ldAt (L : Nat) (A : Mat m n) : Mat m n :=
 
 /--
 Whether `symm` matches the reference loops bit for bit with `B` and `C` at the leading dimension
-`L`, where it runs a column at a time when `L` is a multiple of 512 (`symmWide`), and leaves the
-rest of `C`'s array unchanged.
+`L`, and leaves the rest of `C`'s array unchanged.
 -/
 def symmMatchesLd (L m n : Nat) (uplo : Uplo) : Bool :=
   let A := thirds (triM m 1 0 uplo)

@@ -62,10 +62,10 @@ Changes that would reorder them, such as partial sums in `dot`, `asum` and `nrm2
   their order. About 2–3× locally (6–8 GFLOP/s at 256–1024, near `trsm`).
 - [x] `symm`: four columns of `B` and `C` at a time, which share the reads of `A`, each element with
   its operations in their order. About 1.1–1.4× locally (6.2–7.7 GFLOP/s at 256–1024, from
-  5.4–6.1). It runs a column at a time when the columns of `B` or `C` are a multiple of 4 KiB
-  apart: the nine columns of a pass then fall in the same cache sets, and on GitHub's AMD EPYC
-  9V74 (8-way L1) the pass of four ran at 2.8 GFLOP/s at 512 and 1024, against 5.9 at 256.
-- [ ] `symm`: a two-column kernel for those leading dimensions (five columns per pass).
+  5.4–6.1).
+- [ ] `symm`: check the four-column pass at power-of-two leading dimensions on several CPUs. It
+  streams nine columns at once, and on one AMD EPYC 9V74 run (8-way L1) it ran at 2.8 GFLOP/s at
+  512 and 1024, against 5.9 at 256. Three columns (seven streams) would stay within 8 ways.
 - [ ] `symmRight`: four added columns of `B` per pass over the rows of a column of `C`, as `gemv`
   adds four columns. Each element keeps its order of operations. It runs at 5.4–7.8 GFLOP/s at
   256–1024, one column at a time.

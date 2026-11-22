@@ -869,21 +869,18 @@ private theorem col_add_le' {off ld j : Nat} (hml : m ≤ ld) :
     off + ld * j + m ≤ off + ld * (j + 1) := by
   rw [Nat.mul_succ]; lia
 
-/--
-The loops of `symm uplo` over the columns from `j` of the array `c` of `C`: four at a time by
-`symm4Data` when `wide`, and one at a time otherwise and for the last ones.
--/
+/-- The loops of `symm uplo` over the columns from `j` of the array `c` of `C`. -/
 public def symmCols (uplo : Uplo) (α : Float) (A : Mat m m) (B : Mat m n) (β : Float)
     (C : Mat m n) (hs : A.data.size < USize.size ∧ B.data.size < USize.size ∧
       C.data.size < USize.size ∧ n < USize.size ∧ 0 < m)
-    (co cl : USize) (hco : C.off.toUSize = co) (hcl : C.ld.toUSize = cl) (wide : Bool) (j : Nat)
+    (co cl : USize) (hco : C.off.toUSize = co) (hcl : C.ld.toUSize = cl) (j : Nat)
     (c : Float64Array) (hc : c.size = C.data.size) : Float64Array :=
-  if h4 : wide ∧ j + 4 ≤ n then
+  if h4 : j + 4 ≤ n then
     have hb : C.off + C.ld * (j + 3) + m ≤ c.size := hc ▸ C.col_le hs.2.2.2.2 (by lia)
     let o := fun r => (co + cl * (j + r).toUSize).toNat
     have ho : ∀ r, j + r < n → o r = C.off + C.ld * (j + r) := fun r hr => by
       simp only [o, ← hco, ← hcl, toNat_col_base C hs.2.2.1 hs.2.2.2.2 hr (by lia)]
-    symmCols uplo α A B β C hs co cl hco hcl wide (j + 4)
+    symmCols uplo α A B β C hs co cl hco hcl (j + 4)
       (symm4Data uplo α A B β j (o 0) (o 1) (o 2) (o 3) c
         (by rw [ho 0 (by lia), ho 1 (by lia)]; exact col_add_le' C.le_ld)
         (by rw [ho 1 (by lia), ho 2 (by lia)]; exact col_add_le' C.le_ld)
@@ -902,7 +899,7 @@ public def symmCols (uplo : Uplo) (α : Float) (A : Mat m m) (B : Mat m n) (β :
           (by rw [hju]; exact hj) c hcb hcs
       | .lower => symmLowerCol α A B β ⟨hs.1, hs.2.1⟩ (co + cl * j.toUSize) j.toUSize
           (by rw [hju]; exact hj) c hcb hcs
-    symmCols uplo α A B β C hs co cl hco hcl wide (j + 1) c'.1 (c'.2.trans hc)
+    symmCols uplo α A B β C hs co cl hco hcl (j + 1) c'.1 (c'.2.trans hc)
   else c
 termination_by n - j
 
@@ -920,9 +917,9 @@ private theorem iterRange_col_mapMat (a : Float64Array) (off ld : Nat) (hml : m 
 private theorem symmCols_eq (uplo : Uplo) (α : Float) (A : Mat m m) (B : Mat m n) (β : Float)
     (C : Mat m n) (hs : A.data.size < USize.size ∧ B.data.size < USize.size ∧
       C.data.size < USize.size ∧ n < USize.size ∧ 0 < m)
-    (co cl : USize) (hco : C.off.toUSize = co) (hcl : C.ld.toUSize = cl) (wide : Bool)
-    (j : Nat) (c : Float64Array) (hc : c.size = C.data.size) :
-    symmCols uplo α A B β C hs co cl hco hcl wide j c hc =
+    (co cl : USize) (hco : C.off.toUSize = co) (hcl : C.ld.toUSize = cl) (j : Nat)
+    (c : Float64Array) (hc : c.size = C.data.size) :
+    symmCols uplo α A B β C hs co cl hco hcl j c hc =
       iterRange (fun j c => c.modifyAt (fun i => C.off + C.ld * j + i) 0 m
         (symmAt uplo α A B β j)) j n c := by
   obtain ⟨d, hd⟩ : ∃ d, n - j = d := ⟨_, rfl⟩
@@ -957,23 +954,13 @@ private theorem symmCols_eq (uplo : Uplo) (α : Float) (A : Mat m m) (B : Mat m 
     (i j : Nat) (v : Float) : Float :=
   if α == 0 then betaMul β v else symmAt uplo α A B β j i v
 
-/--
-Whether `symm` runs four columns at a time: not when the columns of `B` or `C` are a multiple of
-4 KiB apart. Then the nine columns that a pass reads at the same time, four of `B`, four of `C`
-and one of `A`, fall in the same sets of the cache. They evict each other in a cache with 8 ways,
-which made the pass of four columns 2 to 3 times slower than a column at a time on an AMD EPYC.
--/
-@[inline] public def symmWide (B : Mat m n) (C : Mat m n) : Bool :=
-  C.ld % 512 != 0 && B.ld % 512 != 0
-
 /-- The array of `symm`. -/
 public def symmData (uplo : Uplo) (α : Float) (A : Mat m m) (B : Mat m n) (β : Float)
     (C : Mat m n) : Float64Array :=
   if hs : A.data.size < USize.size ∧ B.data.size < USize.size ∧ C.data.size < USize.size ∧
       n < USize.size ∧ 0 < m then
     if α == 0 then C.scalBetaData β
-    else symmCols uplo α A B β C hs C.off.toUSize C.ld.toUSize rfl rfl (symmWide B C) 0 C.data
-      rfl
+    else symmCols uplo α A B β C hs C.off.toUSize C.ld.toUSize rfl rfl 0 C.data rfl
   else mapMat C.data C.off C.ld m 0 n (symmVal uplo α A B β)
 
 public theorem symmData_eq (uplo : Uplo) (α : Float) (A : Mat m m) (B : Mat m n) (β : Float)
