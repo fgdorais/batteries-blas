@@ -445,6 +445,344 @@ public theorem symmLowerCol_eq_modifyAt (α : Float32) (A : Mat m m) (B : Mat m 
   rw [Nat.sub_self, Nat.sub_zero]
 
 
+/-! ## Four columns per pass -/
+
+/-- Add `u` to the element `i` of the column at `o`. -/
+private def colAdd (o i : Nat) (u : Float32) (b : Float32Array) : Float32Array :=
+  b.set! (o + i) (b[o + i]! + u)
+
+/-- Map the element `i` of the column at `o` by `V`. -/
+private def colSet (o i : Nat) (V : Float32 → Float32) (b : Float32Array) : Float32Array :=
+  b.set! (o + i) (V b[o + i]!)
+
+private theorem local_colAdd {o i : Nat} (hi : i < m) (u : Float32) :
+    Local (colIdx o m) (colAdd o i u) :=
+  local_set! (o + i) ⟨by lia, by lia⟩ _ fun _ _ _ h => by rw [h (o + i) ⟨by lia, by lia⟩]
+
+private theorem local_colSet {o i : Nat} (hi : i < m) (V : Float32 → Float32) :
+    Local (colIdx o m) (colSet o i V) :=
+  local_set! (o + i) ⟨by lia, by lia⟩ _ fun _ _ _ h => by rw [h (o + i) ⟨by lia, by lia⟩]
+
+private theorem local_modifyAt_col' {o lo hi : Nat} (h : hi ≤ m) (g : Nat → Float32 → Float32) :
+    Local (colIdx o m) fun b => b.modifyAt (fun i => o + i) lo hi g := by
+  have e : (fun b : Float32Array => b.modifyAt (fun i => o + i) lo hi g) = fun b =>
+      b.modifyAt (Stride.mk o 1).idx 0 m fun i v => if lo ≤ i ∧ i < hi then g i v else v := by
+    funext b
+    by_cases hl : lo ≤ hi
+    · rw [modifyAt_widen _ _ _ (Nat.zero_le lo) hl h]
+      exact modifyAt_congr _ (fun i _ _ => by simp [Stride.idx]) (fun _ _ _ => rfl)
+    · rw [modifyAt_of_le _ _ (by lia), modifyAt_congr_fun _ _ (g' := fun _ v => v)
+        (fun i v _ _ => by simp only [show ¬(lo ≤ i ∧ i < hi) by lia, ite_false]), modifyAt_id]
+  rw [e]
+  exact local_modifyAt_col o m _
+
+private theorem local_symmUpperStep (α : Float32) (A : Mat m m) (B : Mat m n) (β : Float32)
+    (cb j : Nat) {p : Nat} (hp : p < m) : Local (colIdx cb m) (symmUpperStep α A B β cb j p) :=
+  local_modifyAt_col' (lo := 0) (hi := p + 1) hp _
+
+private theorem local_symmLowerStep (α : Float32) (A : Mat m m) (B : Mat m n) (β : Float32)
+    (cb j p : Nat) : Local (colIdx cb m) (symmLowerStep α A B β cb j p) :=
+  local_modifyAt_col' (lo := p) (hi := m) (Nat.le_refl _) _
+
+/-- The step `p` of `symm .upper` is the additions to the elements above `p`, then element `p`. -/
+private theorem symmUpperStep_eq_col (α : Float32) (A : Mat m m) (B : Mat m n) (β : Float32)
+    (cb j p : Nat) (c : Float32Array) :
+    symmUpperStep α A B β cb j p c = colSet cb p (fun v =>
+        symmDiag β v (α * B.data[B.off + B.ld * j + p]! * A.data[A.off + A.ld * p + p]!) +
+          α * symmUpperDot A B j p)
+      (iterRange (fun k => colAdd cb k
+        (α * B.data[B.off + B.ld * j + p]! * A.data[A.off + A.ld * p + k]!)) 0 p c) := by
+  rw [symmUpperStep_eq, colSet]
+  unfold colAdd
+  rw [iterRange_set!_self c (fun k => cb + k) (fun k v =>
+    v + α * B.data[B.off + B.ld * j + p]! * A.data[A.off + A.ld * p + k]!),
+    getElem!_modifyAt_of_ne _ _ (p := cb + p) _ (fun i _ hi => by lia)]
+
+/-- The step `p` of `symm .lower` is the additions to the elements below `p`, then element `p`. -/
+private theorem symmLowerStep_eq_col (α : Float32) (A : Mat m m) (B : Mat m n) (β : Float32)
+    (cb j : Nat) {p : Nat} (hp : p < m) (c : Float32Array) :
+    symmLowerStep α A B β cb j p c = colSet cb p (fun v =>
+        symmDiag β v (α * B.data[B.off + B.ld * j + p]! * A.data[A.off + A.ld * p + p]!) +
+          α * symmLowerDot A B j p)
+      (iterRange (fun l => colAdd cb (p + 1 + l)
+        (α * B.data[B.off + B.ld * j + p]! * A.data[A.off + A.ld * p + (p + 1 + l)]!)) 0
+        (m - 1 - p) c) := by
+  rw [symmLowerStep_eq _ _ _ _ _ _ hp, colSet]
+  unfold colAdd
+  rw [iterRange_set!_self c (fun l => cb + (p + 1 + l)) (fun l v =>
+    v + α * B.data[B.off + B.ld * j + p]! * A.data[A.off + A.ld * p + (p + 1 + l)]!),
+    getElem!_modifyAt_of_ne _ _ (p := cb + p) _ (fun i _ hi => by lia)]
+
+/--
+Columns `J` to `J + 3` of `symm .upper` together, on the array `b` with the columns of `C` at `o₀`
+to `o₃`: at step `p`, the four columns share the reads of column `p` of `A`. Each element gets the
+operations of `symmUpperCol`, in the same order.
+-/
+public def symmUpper4Data (α : Float32) (A : Mat m m) (B : Mat m n) (β : Float32) (J : Nat)
+    (o₀ o₁ o₂ o₃ : Nat) (b : Float32Array)
+    (h₁ : o₀ + m ≤ o₁) (h₂ : o₁ + m ≤ o₂) (h₃ : o₂ + m ≤ o₃) (h₄ : o₃ + m ≤ b.size)
+    (hJ : J + 3 < n) (hs : A.data.size < USize.size ∧ B.data.size < USize.size ∧
+      b.size < USize.size ∧ n < USize.size) : Float32Array :=
+  let mu := m.toUSize
+  have hmu : mu.toNat = m := by grind
+  let c₀ := o₀.toUSize
+  have e₀ : c₀.toNat = o₀ := by grind
+  let c₁ := o₁.toUSize
+  have e₁ : c₁.toNat = o₁ := by grind
+  let c₂ := o₂.toUSize
+  have e₂ : c₂.toNat = o₂ := by grind
+  let c₃ := o₃.toUSize
+  have e₃ : c₃.toNat = o₃ := by grind
+  let ju := J.toUSize
+  have u₀ : ju.toNat = J := by grind
+  have u₁ : (ju + 1).toNat = J + 1 := by grind
+  have u₂ : (ju + 2).toNat = J + 2 := by grind
+  have u₃ : (ju + 3).toNat = J + 3 := by grind
+  let ao := A.off.toUSize
+  let al := A.ld.toUSize
+  let bo := B.off.toUSize
+  let bl := B.ld.toUSize
+  (inplace b do
+    for p in 0...mu do
+      have hpm : p.toNat < m := by lia
+      let B' := fun (k j : USize) (hk : k.toNat < m) (hj : j.toNat < n) =>
+        B.uget bo bl rfl rfl hs.2.1 k j hk hj
+      let t₀ := α * B' p ju hpm (by lia)
+      let t₁ := α * B' p (ju + 1) hpm (by lia)
+      let t₂ := α * B' p (ju + 2) hpm (by lia)
+      let t₃ := α * B' p (ju + 3) hpm (by lia)
+      for k in 0...p with (s₀ := 0) (s₁ := 0) (s₂ := 0) (s₃ := 0) do
+        have hk : k.toNat < m := by lia
+        have q₀ : (c₀ + k).toNat < b.size := by grind
+        have q₁ : (c₁ + k).toNat < b.size := by grind
+        have q₂ : (c₂ + k).toNat < b.size := by grind
+        have q₃ : (c₃ + k).toNat < b.size := by grind
+        let akp := A.uget ao al rfl rfl hs.1 k p hk hpm
+        b[c₀ + k] := b[c₀ + k] + t₀ * akp
+        b[c₁ + k] := b[c₁ + k] + t₁ * akp
+        b[c₂ + k] := b[c₂ + k] + t₂ * akp
+        b[c₃ + k] := b[c₃ + k] + t₃ * akp
+        s₀ := s₀ + B' k ju hk (by lia) * akp
+        s₁ := s₁ + B' k (ju + 1) hk (by lia) * akp
+        s₂ := s₂ + B' k (ju + 2) hk (by lia) * akp
+        s₃ := s₃ + B' k (ju + 3) hk (by lia) * akp
+      have q₀ : (c₀ + p).toNat < b.size := by grind
+      have q₁ : (c₁ + p).toNat < b.size := by grind
+      have q₂ : (c₂ + p).toNat < b.size := by grind
+      have q₃ : (c₃ + p).toNat < b.size := by grind
+      let app := A.uget ao al rfl rfl hs.1 p p hpm hpm
+      b[c₀ + p] := symmDiag β b[c₀ + p] (t₀ * app) + α * s₀
+      b[c₁ + p] := symmDiag β b[c₁ + p] (t₁ * app) + α * s₁
+      b[c₂ + p] := symmDiag β b[c₂ + p] (t₂ * app) + α * s₂
+      b[c₃ + p] := symmDiag β b[c₃ + p] (t₃ * app) + α * s₃).2
+
+public theorem symmUpper4Data_eq (α : Float32) (A : Mat m m) (B : Mat m n) (β : Float32) (J : Nat)
+    (o₀ o₁ o₂ o₃ : Nat) (b : Float32Array)
+    (h₁ : o₀ + m ≤ o₁) (h₂ : o₁ + m ≤ o₂) (h₃ : o₂ + m ≤ o₃) (h₄ : o₃ + m ≤ b.size)
+    (hJ : J + 3 < n) (hs : A.data.size < USize.size ∧ B.data.size < USize.size ∧
+      b.size < USize.size ∧ n < USize.size) :
+    symmUpper4Data α A B β J o₀ o₁ o₂ o₃ b h₁ h₂ h₃ h₄ hJ hs =
+      iterRange (fun p c => symmUpperStep α A B β o₃ (J + 3) p
+        (symmUpperStep α A B β o₂ (J + 2) p (symmUpperStep α A B β o₁ (J + 1) p
+          (symmUpperStep α A B β o₀ J p c)))) 0 m b := by
+  have hmu : m.toUSize.toNat = m := by grind
+  have e₀ : o₀.toUSize.toNat = o₀ := by grind
+  have e₁ : o₁.toUSize.toNat = o₁ := by grind
+  have e₂ : o₂.toUSize.toNat = o₂ := by grind
+  have e₃ : o₃.toUSize.toNat = o₃ := by grind
+  have u₀ : J.toUSize.toNat = J := by grind
+  have u₁ : (J.toUSize + 1).toNat = J + 1 := by grind
+  have u₂ : (J.toUSize + 2).toNat = J + 2 := by grind
+  have u₃ : (J.toUSize + 3).toNat = J + 3 := by grind
+  unfold symmUpper4Data
+  simp only [runInPlaceThenOf_eq, Tail.forIn_eq]
+  rw [Tail.run_forInFrom_unit (F := fun p c => symmUpperStep α A B β o₃ (J + 3) p
+      (symmUpperStep α A B β o₂ (J + 2) p (symmUpperStep α A B β o₁ (J + 1) p
+        (symmUpperStep α A B β o₀ J p c))))
+    (hF := fun _ _ => by simp [symmUpperStep])]
+  · simp only [Tail.run_done, USize.toNat_zero, hmu]
+  · intro p _ hp next a h
+    rw [hmu] at hp
+    have hb : b.size < USize.size := hs.2.2.1
+    have t₀ : (o₀.toUSize + p).toNat = o₀ + p.toNat := by grind
+    have t₁ : (o₁.toUSize + p).toNat = o₁ + p.toNat := by grind
+    have t₂ : (o₂.toUSize + p).toNat = o₂ + p.toNat := by grind
+    have t₃ : (o₃.toUSize + p).toNat = o₃ + p.toNat := by grind
+    let U := fun r => α * B.data[B.off + B.ld * (J + r) + p.toNat]!
+    let a' := fun k => A.data[A.off + A.ld * p.toNat + k]!
+    simp only [Tail.forIn4_eq]
+    rw [run_forIn4From_modify
+      (f₀ := fun k s => s + B.data[B.off + B.ld * J + k]! * a' k)
+      (f₁ := fun k s => s + B.data[B.off + B.ld * (J + 1) + k]! * a' k)
+      (f₂ := fun k s => s + B.data[B.off + B.ld * (J + 2) + k]! * a' k)
+      (f₃ := fun k s => s + B.data[B.off + B.ld * (J + 3) + k]! * a' k)
+      (F := fun k c => colAdd o₃ k (U 3 * a' k) (colAdd o₂ k (U 2 * a' k)
+        (colAdd o₁ k (U 1 * a' k) (colAdd o₀ k (U 0 * a' k) c))))
+      (hF := fun _ _ => by simp [colAdd])]
+    · simp only [Tail.run_readThen, Tail.run_writeThen, USize.toNat_zero]
+      apply run_congr
+      simp only [symmUpperStep_eq_col]
+      refine Eq.trans ?_ (four_cols_reorder h₁ h₂ h₃
+        (Local.iterRange fun k _ hk => local_colAdd (show k < m by lia) _)
+        (Local.iterRange fun k _ hk => local_colAdd (show k < m by lia) _)
+        (Local.iterRange fun k _ hk => local_colAdd (show k < m by lia) _)
+        (local_colSet hp _) (local_colSet hp _) (local_colSet hp _) a)
+      rw [← iterRange_four_cols h₁ h₂ h₃ (fun k hk => local_colAdd (show k < m by lia) _)
+          (fun k hk => local_colAdd (show k < m by lia) _)
+          (fun k hk => local_colAdd (show k < m by lia) _)
+          (fun k hk => local_colAdd (show k < m by lia) _)]
+      simp only [colSet, t₀, t₁, t₂, t₃, set_eq_set!, getElem_eq_getElem!, uget_eq_getElem,
+        getElem_def, u₀, u₁, u₂, u₃, iterRange_eq_fold, symmUpperDot, U, a', Nat.add_zero]
+    · intro k _ hk next' s₀ s₁ s₂ s₃ b' hb'
+      have v₀ : (o₀.toUSize + k).toNat = o₀ + k.toNat := by grind
+      have v₁ : (o₁.toUSize + k).toNat = o₁ + k.toNat := by grind
+      have v₂ : (o₂.toUSize + k).toNat = o₂ + k.toNat := by grind
+      have v₃ : (o₃.toUSize + k).toNat = o₃ + k.toNat := by grind
+      simp only [Tail.run_readThen, Tail.run_writeThen, v₀, v₁, v₂, v₃, set_eq_set!,
+        getElem_eq_getElem!, uget_eq_getElem, getElem_def, u₀, u₁, u₂, u₃, colAdd, U, a',
+        Nat.add_zero]
+
+/--
+Columns `J` to `J + 3` of `symm .lower` together, as `symmUpper4Data` does for the upper triangle:
+each element gets the operations of `symmLowerCol`, in the same order.
+-/
+public def symmLower4Data (α : Float32) (A : Mat m m) (B : Mat m n) (β : Float32) (J : Nat)
+    (o₀ o₁ o₂ o₃ : Nat) (b : Float32Array)
+    (h₁ : o₀ + m ≤ o₁) (h₂ : o₁ + m ≤ o₂) (h₃ : o₂ + m ≤ o₃) (h₄ : o₃ + m ≤ b.size)
+    (hJ : J + 3 < n) (hs : A.data.size < USize.size ∧ B.data.size < USize.size ∧
+      b.size < USize.size ∧ n < USize.size) : Float32Array :=
+  let mu := m.toUSize
+  have hmu : mu.toNat = m := by grind
+  let c₀ := o₀.toUSize
+  have e₀ : c₀.toNat = o₀ := by grind
+  let c₁ := o₁.toUSize
+  have e₁ : c₁.toNat = o₁ := by grind
+  let c₂ := o₂.toUSize
+  have e₂ : c₂.toNat = o₂ := by grind
+  let c₃ := o₃.toUSize
+  have e₃ : c₃.toNat = o₃ := by grind
+  let ju := J.toUSize
+  have u₀ : ju.toNat = J := by grind
+  have u₁ : (ju + 1).toNat = J + 1 := by grind
+  have u₂ : (ju + 2).toNat = J + 2 := by grind
+  have u₃ : (ju + 3).toNat = J + 3 := by grind
+  let ao := A.off.toUSize
+  let al := A.ld.toUSize
+  let bo := B.off.toUSize
+  let bl := B.ld.toUSize
+  (inplace b do
+    for q in 0...mu do
+      have hpm : (mu - 1 - q).toNat < m := by grind
+      let B' := fun (k j : USize) (hk : k.toNat < m) (hj : j.toNat < n) =>
+        B.uget bo bl rfl rfl hs.2.1 k j hk hj
+      let t₀ := α * B' (mu - 1 - q) ju hpm (by lia)
+      let t₁ := α * B' (mu - 1 - q) (ju + 1) hpm (by lia)
+      let t₂ := α * B' (mu - 1 - q) (ju + 2) hpm (by lia)
+      let t₃ := α * B' (mu - 1 - q) (ju + 3) hpm (by lia)
+      for l in 0...q with (s₀ := 0) (s₁ := 0) (s₂ := 0) (s₃ := 0) do
+        have hk : (mu - 1 - q + 1 + l).toNat < m := by grind
+        have q₀ : (c₀ + (mu - 1 - q + 1 + l)).toNat < b.size := by grind
+        have q₁ : (c₁ + (mu - 1 - q + 1 + l)).toNat < b.size := by grind
+        have q₂ : (c₂ + (mu - 1 - q + 1 + l)).toNat < b.size := by grind
+        have q₃ : (c₃ + (mu - 1 - q + 1 + l)).toNat < b.size := by grind
+        let akp := A.uget ao al rfl rfl hs.1 (mu - 1 - q + 1 + l) (mu - 1 - q) hk hpm
+        b[c₀ + (mu - 1 - q + 1 + l)] := b[c₀ + (mu - 1 - q + 1 + l)] + t₀ * akp
+        b[c₁ + (mu - 1 - q + 1 + l)] := b[c₁ + (mu - 1 - q + 1 + l)] + t₁ * akp
+        b[c₂ + (mu - 1 - q + 1 + l)] := b[c₂ + (mu - 1 - q + 1 + l)] + t₂ * akp
+        b[c₃ + (mu - 1 - q + 1 + l)] := b[c₃ + (mu - 1 - q + 1 + l)] + t₃ * akp
+        s₀ := s₀ + B' (mu - 1 - q + 1 + l) ju hk (by lia) * akp
+        s₁ := s₁ + B' (mu - 1 - q + 1 + l) (ju + 1) hk (by lia) * akp
+        s₂ := s₂ + B' (mu - 1 - q + 1 + l) (ju + 2) hk (by lia) * akp
+        s₃ := s₃ + B' (mu - 1 - q + 1 + l) (ju + 3) hk (by lia) * akp
+      have q₀ : (c₀ + (mu - 1 - q)).toNat < b.size := by grind
+      have q₁ : (c₁ + (mu - 1 - q)).toNat < b.size := by grind
+      have q₂ : (c₂ + (mu - 1 - q)).toNat < b.size := by grind
+      have q₃ : (c₃ + (mu - 1 - q)).toNat < b.size := by grind
+      let app := A.uget ao al rfl rfl hs.1 (mu - 1 - q) (mu - 1 - q) hpm hpm
+      b[c₀ + (mu - 1 - q)] := symmDiag β b[c₀ + (mu - 1 - q)] (t₀ * app) + α * s₀
+      b[c₁ + (mu - 1 - q)] := symmDiag β b[c₁ + (mu - 1 - q)] (t₁ * app) + α * s₁
+      b[c₂ + (mu - 1 - q)] := symmDiag β b[c₂ + (mu - 1 - q)] (t₂ * app) + α * s₂
+      b[c₃ + (mu - 1 - q)] := symmDiag β b[c₃ + (mu - 1 - q)] (t₃ * app) + α * s₃).2
+
+public theorem symmLower4Data_eq (α : Float32) (A : Mat m m) (B : Mat m n) (β : Float32) (J : Nat)
+    (o₀ o₁ o₂ o₃ : Nat) (b : Float32Array)
+    (h₁ : o₀ + m ≤ o₁) (h₂ : o₁ + m ≤ o₂) (h₃ : o₂ + m ≤ o₃) (h₄ : o₃ + m ≤ b.size)
+    (hJ : J + 3 < n) (hs : A.data.size < USize.size ∧ B.data.size < USize.size ∧
+      b.size < USize.size ∧ n < USize.size) :
+    symmLower4Data α A B β J o₀ o₁ o₂ o₃ b h₁ h₂ h₃ h₄ hJ hs =
+      iterRange (fun q c => symmLowerStep α A B β o₃ (J + 3) (m - 1 - q)
+        (symmLowerStep α A B β o₂ (J + 2) (m - 1 - q) (symmLowerStep α A B β o₁ (J + 1) (m - 1 - q)
+          (symmLowerStep α A B β o₀ J (m - 1 - q) c)))) 0 m b := by
+  have hmu : m.toUSize.toNat = m := by grind
+  have e₀ : o₀.toUSize.toNat = o₀ := by grind
+  have e₁ : o₁.toUSize.toNat = o₁ := by grind
+  have e₂ : o₂.toUSize.toNat = o₂ := by grind
+  have e₃ : o₃.toUSize.toNat = o₃ := by grind
+  have u₀ : J.toUSize.toNat = J := by grind
+  have u₁ : (J.toUSize + 1).toNat = J + 1 := by grind
+  have u₂ : (J.toUSize + 2).toNat = J + 2 := by grind
+  have u₃ : (J.toUSize + 3).toNat = J + 3 := by grind
+  unfold symmLower4Data
+  simp only [runInPlaceThenOf_eq, Tail.forIn_eq]
+  rw [Tail.run_forInFrom_unit (F := fun q c => symmLowerStep α A B β o₃ (J + 3) (m - 1 - q)
+      (symmLowerStep α A B β o₂ (J + 2) (m - 1 - q) (symmLowerStep α A B β o₁ (J + 1) (m - 1 - q)
+        (symmLowerStep α A B β o₀ J (m - 1 - q) c))))
+    (hF := fun _ _ => by simp [symmLowerStep])]
+  · simp only [Tail.run_done, USize.toNat_zero, hmu]
+  · intro q _ hq next a h
+    rw [hmu] at hq
+    have hb : b.size < USize.size := hs.2.2.1
+    have hp : (m.toUSize - 1 - q).toNat = m - 1 - q.toNat := by grind
+    have hp' : m - 1 - q.toNat < m := by lia
+    have hmq : m - 1 - (m - 1 - q.toNat) = q.toNat := by lia
+    have t₀ : (o₀.toUSize + (m.toUSize - 1 - q)).toNat = o₀ + (m - 1 - q.toNat) := by grind
+    have t₁ : (o₁.toUSize + (m.toUSize - 1 - q)).toNat = o₁ + (m - 1 - q.toNat) := by grind
+    have t₂ : (o₂.toUSize + (m.toUSize - 1 - q)).toNat = o₂ + (m - 1 - q.toNat) := by grind
+    have t₃ : (o₃.toUSize + (m.toUSize - 1 - q)).toNat = o₃ + (m - 1 - q.toNat) := by grind
+    let P := m - 1 - q.toNat
+    let U := fun r => α * B.data[B.off + B.ld * (J + r) + P]!
+    let a' := fun k => A.data[A.off + A.ld * P + k]!
+    simp only [Tail.forIn4_eq]
+    rw [run_forIn4From_modify
+      (f₀ := fun l s => s + B.data[B.off + B.ld * J + (P + 1 + l)]! * a' (P + 1 + l))
+      (f₁ := fun l s => s + B.data[B.off + B.ld * (J + 1) + (P + 1 + l)]! * a' (P + 1 + l))
+      (f₂ := fun l s => s + B.data[B.off + B.ld * (J + 2) + (P + 1 + l)]! * a' (P + 1 + l))
+      (f₃ := fun l s => s + B.data[B.off + B.ld * (J + 3) + (P + 1 + l)]! * a' (P + 1 + l))
+      (F := fun l c => colAdd o₃ (P + 1 + l) (U 3 * a' (P + 1 + l))
+        (colAdd o₂ (P + 1 + l) (U 2 * a' (P + 1 + l))
+        (colAdd o₁ (P + 1 + l) (U 1 * a' (P + 1 + l))
+          (colAdd o₀ (P + 1 + l) (U 0 * a' (P + 1 + l)) c))))
+      (hF := fun _ _ => by simp [colAdd])]
+    · simp only [Tail.run_readThen, Tail.run_writeThen, USize.toNat_zero]
+      apply run_congr
+      simp only [symmLowerStep_eq_col _ _ _ _ _ _ hp', hmq]
+      refine Eq.trans ?_ (four_cols_reorder h₁ h₂ h₃
+        (Local.iterRange fun l _ hl => local_colAdd (show P + 1 + l < m by lia) _)
+        (Local.iterRange fun l _ hl => local_colAdd (show P + 1 + l < m by lia) _)
+        (Local.iterRange fun l _ hl => local_colAdd (show P + 1 + l < m by lia) _)
+        (local_colSet hp' _) (local_colSet hp' _) (local_colSet hp' _) a)
+      rw [← iterRange_four_cols h₁ h₂ h₃
+          (fun l hl => local_colAdd (show P + 1 + l < m by lia) _)
+          (fun l hl => local_colAdd (show P + 1 + l < m by lia) _)
+          (fun l hl => local_colAdd (show P + 1 + l < m by lia) _)
+          (fun l hl => local_colAdd (show P + 1 + l < m by lia) _)]
+      simp only [colSet, t₀, t₁, t₂, t₃, hp, set_eq_set!, getElem_eq_getElem!, uget_eq_getElem,
+        getElem_def, u₀, u₁, u₂, u₃, iterRange_eq_fold, symmLowerDot, Nat.fold_congr hmq, U, a',
+        P, Nat.add_zero]
+    · intro l _ hl next' s₀ s₁ s₂ s₃ b' hb'
+      have hl' : (m.toUSize - 1 - q + 1 + l).toNat = m - 1 - q.toNat + 1 + l.toNat := by grind
+      have v₀ : (o₀.toUSize + (m.toUSize - 1 - q + 1 + l)).toNat =
+          o₀ + (m - 1 - q.toNat + 1 + l.toNat) := by grind
+      have v₁ : (o₁.toUSize + (m.toUSize - 1 - q + 1 + l)).toNat =
+          o₁ + (m - 1 - q.toNat + 1 + l.toNat) := by grind
+      have v₂ : (o₂.toUSize + (m.toUSize - 1 - q + 1 + l)).toNat =
+          o₂ + (m - 1 - q.toNat + 1 + l.toNat) := by grind
+      have v₃ : (o₃.toUSize + (m.toUSize - 1 - q + 1 + l)).toNat =
+          o₃ + (m - 1 - q.toNat + 1 + l.toNat) := by grind
+      simp only [Tail.run_readThen, Tail.run_writeThen, v₀, v₁, v₂, v₃, hl', hp, set_eq_set!,
+        getElem_eq_getElem!, uget_eq_getElem, getElem_def, u₀, u₁, u₂, u₃, colAdd, U, a', P,
+        Nat.add_zero]
+
 /-! ## `symm` -/
 
 /-- The value of element `i` of column `j` of the product on the left, from its old value. -/
@@ -463,13 +801,94 @@ private theorem toNat_col_base (C : Mat m n) (hs : C.data.size < USize.size) (hm
   have := C.toNat_index hs (i := 0) (j := j.toUSize) hm (by rw [hj']; exact hj)
   grind
 
+/-- The loops of column `j` of `symm .upper` at `cb` map the column by `symmUpperAt`. -/
+private theorem iterRange_symmUpperStep_eq (α : Float32) (A : Mat m m) (B : Mat m n) (β : Float32)
+    (cb j : Nat) (c : Float32Array) :
+    iterRange (symmUpperStep α A B β cb j) 0 m c =
+      c.modifyAt (fun i => cb + i) 0 m (symmUpperAt α A B β j) := by
+  rw [iterRange_symmUpperStep _ _ _ _ _ _ _ (Nat.le_refl _)]
+  apply modifyAt_congr_fun
+  intro i v _ hi
+  simp only [hi, ite_true, symmUpperAt]
+
+/-- The loops of column `j` of `symm .lower` at `cb` map the column by `symmLowerAt`. -/
+private theorem iterRange_symmLowerStep_eq (α : Float32) (A : Mat m m) (B : Mat m n) (β : Float32)
+    (cb j : Nat) (c : Float32Array) :
+    iterRange (fun q => symmLowerStep α A B β cb j (m - 1 - q)) 0 m c =
+      c.modifyAt (fun i => cb + i) 0 m (symmLowerAt α A B β j) := by
+  rw [iterRange_symmLowerStep _ _ _ _ _ _ _ (Nat.le_refl _)]
+  apply modifyAt_congr_fun
+  intro i v _ hi
+  simp only [Nat.sub_self, Nat.zero_le, ite_true, symmLowerAt]
+  rw [Nat.sub_self, Nat.sub_zero]
+
+/-- Columns `J` to `J + 3` of `symm uplo` together. -/
+public def symm4Data (uplo : Uplo) (α : Float32) (A : Mat m m) (B : Mat m n) (β : Float32) (J : Nat)
+    (o₀ o₁ o₂ o₃ : Nat) (b : Float32Array)
+    (h₁ : o₀ + m ≤ o₁) (h₂ : o₁ + m ≤ o₂) (h₃ : o₂ + m ≤ o₃) (h₄ : o₃ + m ≤ b.size)
+    (hJ : J + 3 < n) (hs : A.data.size < USize.size ∧ B.data.size < USize.size ∧
+      b.size < USize.size ∧ n < USize.size) : Float32Array :=
+  match uplo with
+  | .upper => symmUpper4Data α A B β J o₀ o₁ o₂ o₃ b h₁ h₂ h₃ h₄ hJ hs
+  | .lower => symmLower4Data α A B β J o₀ o₁ o₂ o₃ b h₁ h₂ h₃ h₄ hJ hs
+
+/-- The four columns together are the four columns, one after the other. -/
+public theorem symm4Data_eq (uplo : Uplo) (α : Float32) (A : Mat m m) (B : Mat m n) (β : Float32)
+    (J : Nat) (o₀ o₁ o₂ o₃ : Nat) (b : Float32Array)
+    (h₁ : o₀ + m ≤ o₁) (h₂ : o₁ + m ≤ o₂) (h₃ : o₂ + m ≤ o₃) (h₄ : o₃ + m ≤ b.size)
+    (hJ : J + 3 < n) (hs : A.data.size < USize.size ∧ B.data.size < USize.size ∧
+      b.size < USize.size ∧ n < USize.size) :
+    symm4Data uplo α A B β J o₀ o₁ o₂ o₃ b h₁ h₂ h₃ h₄ hJ hs =
+      (((b.modifyAt (fun i => o₀ + i) 0 m (symmAt uplo α A B β J)).modifyAt (fun i => o₁ + i) 0 m
+        (symmAt uplo α A B β (J + 1))).modifyAt (fun i => o₂ + i) 0 m
+          (symmAt uplo α A B β (J + 2))).modifyAt (fun i => o₃ + i) 0 m
+            (symmAt uplo α A B β (J + 3)) := by
+  cases uplo
+  · rw [symm4Data, symmUpper4Data_eq,
+      iterRange_four_cols h₁ h₂ h₃ (fun _ hp => local_symmUpperStep α A B β o₀ J hp)
+        (fun _ hp => local_symmUpperStep α A B β o₁ (J + 1) hp)
+        (fun _ hp => local_symmUpperStep α A B β o₂ (J + 2) hp)
+        (fun _ hp => local_symmUpperStep α A B β o₃ (J + 3) hp)]
+    simp only [iterRange_symmUpperStep_eq, symmAt]
+  · rw [symm4Data, symmLower4Data_eq,
+      iterRange_four_cols h₁ h₂ h₃ (fun q _ => local_symmLowerStep α A B β o₀ J (m - 1 - q))
+        (fun q _ => local_symmLowerStep α A B β o₁ (J + 1) (m - 1 - q))
+        (fun q _ => local_symmLowerStep α A B β o₂ (J + 2) (m - 1 - q))
+        (fun q _ => local_symmLowerStep α A B β o₃ (J + 3) (m - 1 - q))]
+    simp only [iterRange_symmLowerStep_eq, symmAt]
+
+@[simp] private theorem size_symm4Data (uplo : Uplo) (α : Float32) (A : Mat m m) (B : Mat m n)
+    (β : Float32) (J : Nat) (o₀ o₁ o₂ o₃ : Nat) (b : Float32Array)
+    (h₁ : o₀ + m ≤ o₁) (h₂ : o₁ + m ≤ o₂) (h₃ : o₂ + m ≤ o₃) (h₄ : o₃ + m ≤ b.size)
+    (hJ : J + 3 < n) (hs : A.data.size < USize.size ∧ B.data.size < USize.size ∧
+      b.size < USize.size ∧ n < USize.size) :
+    (symm4Data uplo α A B β J o₀ o₁ o₂ o₃ b h₁ h₂ h₃ h₄ hJ hs).size = b.size := by
+  rw [symm4Data_eq]; simp
+
+private theorem col_add_le' {off ld j : Nat} (hml : m ≤ ld) :
+    off + ld * j + m ≤ off + ld * (j + 1) := by
+  rw [Nat.mul_succ]; lia
+
 /-- The loops of `symm uplo` over the columns from `j` of the array `c` of `C`. -/
 public def symmCols (uplo : Uplo) (α : Float32) (A : Mat m m) (B : Mat m n) (β : Float32)
     (C : Mat m n) (hs : A.data.size < USize.size ∧ B.data.size < USize.size ∧
       C.data.size < USize.size ∧ n < USize.size ∧ 0 < m)
     (co cl : USize) (hco : C.off.toUSize = co) (hcl : C.ld.toUSize = cl) (j : Nat)
     (c : Float32Array) (hc : c.size = C.data.size) : Float32Array :=
-  if hj : j < n then
+  if h4 : j + 4 ≤ n then
+    have hb : C.off + C.ld * (j + 3) + m ≤ c.size := hc ▸ C.col_le hs.2.2.2.2 (by lia)
+    let o := fun r => (co + cl * (j + r).toUSize).toNat
+    have ho : ∀ r, j + r < n → o r = C.off + C.ld * (j + r) := fun r hr => by
+      simp only [o, ← hco, ← hcl, toNat_col_base C hs.2.2.1 hs.2.2.2.2 hr (by lia)]
+    symmCols uplo α A B β C hs co cl hco hcl (j + 4)
+      (symm4Data uplo α A B β j (o 0) (o 1) (o 2) (o 3) c
+        (by rw [ho 0 (by lia), ho 1 (by lia)]; exact col_add_le' C.le_ld)
+        (by rw [ho 1 (by lia), ho 2 (by lia)]; exact col_add_le' C.le_ld)
+        (by rw [ho 2 (by lia), ho 3 (by lia)]; exact col_add_le' C.le_ld)
+        (by rw [ho 3 (by lia)]; exact hb) (by lia)
+        ⟨hs.1, hs.2.1, hc ▸ hs.2.2.1, hs.2.2.2.1⟩)
+      (by rw [size_symm4Data]; exact hc)
+  else if hj : j < n then
     have hju : j.toUSize.toNat = j := by grind
     have hcb : (co + cl * j.toUSize).toNat + m ≤ c.size := by
       rw [← hco, ← hcl, toNat_col_base C hs.2.2.1 hs.2.2.2.2 hj (by lia), hc]
@@ -508,7 +927,17 @@ private theorem symmCols_eq (uplo : Uplo) (α : Float32) (A : Mat m m) (B : Mat 
   | ind d ih =>
     rw [symmCols]
     split
-    · rename_i hj
+    · rename_i h4
+      have ho : ∀ r, j + r < n → (co + cl * (j + r).toUSize).toNat = C.off + C.ld * (j + r) :=
+        fun r hr => by rw [← hco, ← hcl, toNat_col_base C hs.2.2.1 hs.2.2.2.2 hr (by lia)]
+      rw [ih (n - (j + 4)) (by lia) (j + 4) _ _ rfl, iterRange_of_lt _ (show j < n by lia),
+        iterRange_of_lt _ (show j + 1 < n by lia), iterRange_of_lt _ (show j + 1 + 1 < n by lia),
+        iterRange_of_lt _ (show j + 1 + 1 + 1 < n by lia), symm4Data_eq]
+      dsimp only
+      rw [ho 0 (by lia), ho 1 (by lia), ho 2 (by lia), ho 3 (by lia)]
+      rfl
+    split
+    · rename_i h4 hj
       have hju : j.toUSize.toNat = j := by grind
       have hcb : (co + cl * j.toUSize).toNat = C.off + C.ld * j := by
         rw [← hco, ← hcl, toNat_col_base C hs.2.2.1 hs.2.2.2.2 hj (by lia)]
@@ -517,7 +946,7 @@ private theorem symmCols_eq (uplo : Uplo) (α : Float32) (A : Mat m m) (B : Mat 
       cases uplo
       · simp only [symmUpperCol_eq_modifyAt, hcb, hju, symmAt]
       · simp only [symmLowerCol_eq_modifyAt, hcb, hju, symmAt]
-    · rename_i hj
+    · rename_i h4 hj
       rw [iterRange_of_le _ (by lia)]
 
 /-- The value of `symm` at the row `i` and the column `j`, from the old value `v`. -/
