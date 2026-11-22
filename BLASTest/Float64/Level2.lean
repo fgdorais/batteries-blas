@@ -305,7 +305,7 @@ def trsvTMatches (n : Nat) (uplo : Uplo) (d : Diag) : Bool :=
 
 #guard [Uplo.lower, .upper].all fun u => [Diag.unit, .nonUnit].all fun d =>
   trsvTMatches 5 u d && trsvTMatches 1 u d && trsvTMatches 0 u d && trsvTMatches 40 u d &&
-    trsvTMatches 300 u d
+    trsvTMatches 300 u d && trsvTMatches 6 u d && trsvTMatches 7 u d && trsvTMatches 11 u d
 
 /-- The residual `Aᵀ * y - x` of a solve, by `gemvT`: zero up to rounding. -/
 def trsvTResidual (n : Nat) (uplo : Uplo) : Float :=
@@ -405,7 +405,8 @@ def trmvMatches (t : Bool) (n : Nat) (uplo : Uplo) (d : Diag) : Bool :=
 #guard [false, true].all fun t => [Uplo.lower, .upper].all fun u =>
   [Diag.unit, .nonUnit].all fun d =>
     trmvMatches t 5 u d && trmvMatches t 1 u d && trmvMatches t 0 u d &&
-      trmvMatches t 40 u d && trmvMatches t 300 u d
+      trmvMatches t 40 u d && trmvMatches t 300 u d && trmvMatches t 6 u d &&
+      trmvMatches t 7 u d && trmvMatches t 11 u d
 
 /-- `trsv` undoes `trmv`, and `trsvT` undoes `trmvT`, up to rounding. -/
 def trmvResidual (n : Nat) (uplo : Uplo) : Float :=
