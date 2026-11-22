@@ -2,6 +2,8 @@ name: Benchmarks
 
 # Runs only on request: from the Actions tab, or by adding the `benchmark` label to a pull request.
 # It also times OpenBLAS and Netlib's BLAS on the same benchmarks, with `scripts/cblas_bench.c`.
+# It runs on x86 Linux, ARM Linux and macOS, since a change can help one CPU and hurt another: see
+# "Performance changes" in CONTRIBUTING.md. The tables go to the job summaries and to the logs.
 on:
   workflow_dispatch:
     inputs:
@@ -15,7 +17,11 @@ on:
 jobs:
   bench:
     if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'benchmark'
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
+    runs-on: ${{ matrix.os }}
     env:
       BASE: ${{ github.event.pull_request.base.sha || inputs.base }}
     steps:
@@ -24,6 +30,14 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+
+      - name: CPU
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then
+            sysctl -n machdep.cpu.brand_string hw.ncpu hw.l1dcachesize hw.l2cachesize
+          else
+            lscpu | grep -E 'Model name|^CPU\(s\)|L1d|L2' | cut -c1-200
+          fi
 
       - name: install Lean
         uses: leanprover/lean-action@ba3fdfe5c4476c925da13bf11a005ddb47e47aee # v1.7.1
@@ -58,7 +72,7 @@ jobs:
       - name: run
         run: |
           {
-            echo "## Benchmarks"
+            echo "## Benchmarks on $RUNNER_OS $RUNNER_ARCH"
             echo
             "$RUNNER_TEMP/bench-head"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -70,40 +84,54 @@ jobs:
             done
             {
               echo
-              echo "## Compared with \`$BASE\`"
+              echo "## Compared with \`$BASE\` on $RUNNER_OS $RUNNER_ARCH"
               echo
               python3 scripts/bench_compare.py "$RUNNER_TEMP/base.tsv" "$RUNNER_TEMP/head.tsv"
-            } >> "$GITHUB_STEP_SUMMARY"
+            } | tee -a "$GITHUB_STEP_SUMMARY"
           elif [ -n "$BASE" ]; then
             echo "The base \`$BASE\` could not be built with this benchmark." \
-              >> "$GITHUB_STEP_SUMMARY"
+              | tee -a "$GITHUB_STEP_SUMMARY"
           fi
 
       # The same benchmarks of OpenBLAS, on one thread, and of Netlib's reference BLAS, in both
-      # precisions. The tables are also printed in the log.
+      # precisions. On macOS, Netlib's CBLAS comes from Homebrew's `lapack`, when it has one.
       - name: compare with C BLAS
         env:
           OPENBLAS_NUM_THREADS: "1"
         run: |
-          sudo apt-get update -q
-          sudo apt-get install -yq libopenblas0-pthread libblas3
-          openblas=$(find /usr/lib -name 'libopenblas.so.0' | head -n 1)
-          netlib=$(find /usr/lib -path '*/blas/libblas.so.3' | head -n 1)
+          if [ "$RUNNER_OS" = macOS ]; then
+            brew install -q openblas lapack
+            openblas="$(brew --prefix openblas)/lib/libopenblas.dylib"
+            netlib="$(brew --prefix lapack)/lib/libcblas.dylib"
+          else
+            sudo apt-get update -q
+            sudo apt-get install -yq libopenblas0-pthread libblas3
+            openblas=$(find /usr/lib -name 'libopenblas.so.0' | head -n 1)
+            netlib=$(find /usr/lib -path '*/blas/libblas.so.3' | head -n 1)
+          fi
+          libs=()
+          for l in "OpenBLAS=$openblas" "Netlib=$netlib"; do
+            if [ -f "${l#*=}" ]; then libs+=("$l"); else echo "${l%%=*} not found."; fi
+          done
           cc -O2 -o "$RUNNER_TEMP/cblas64" scripts/cblas_bench.c -ldl
           cc -O2 -DSINGLE -o "$RUNNER_TEMP/cblas32" scripts/cblas_bench.c -ldl
           for p in 64 32; do
             flag=$([ "$p" = 32 ] && echo --float32 || true)
+            # Alternate the implementations, as above.
             for _ in 1 2 3; do
               "$RUNNER_TEMP/bench-head" --tsv $flag >> "$RUNNER_TEMP/lean$p.tsv"
-              "$RUNNER_TEMP/cblas$p" "$openblas" >> "$RUNNER_TEMP/openblas$p.tsv"
-              "$RUNNER_TEMP/cblas$p" "$netlib" >> "$RUNNER_TEMP/netlib$p.tsv"
+              for i in "${!libs[@]}"; do
+                "$RUNNER_TEMP/cblas$p" "${libs[$i]#*=}" >> "$RUNNER_TEMP/c$i-$p.tsv"
+              done
+            done
+            args=()
+            for i in "${!libs[@]}"; do
+              args+=("${libs[$i]%%=*}=$RUNNER_TEMP/c$i-$p.tsv")
             done
             {
               echo
-              echo "## Float$p compared with OpenBLAS (1 thread) and Netlib"
+              echo "## Float$p compared with C BLAS on $RUNNER_OS $RUNNER_ARCH (OpenBLAS: 1 thread)"
               echo
-              python3 scripts/blas_compare.py "$RUNNER_TEMP/lean$p.tsv" \
-                "OpenBLAS=$RUNNER_TEMP/openblas$p.tsv" "Netlib=$RUNNER_TEMP/netlib$p.tsv"
+              python3 scripts/blas_compare.py "$RUNNER_TEMP/lean$p.tsv" "${args[@]}"
             } | tee -a "$GITHUB_STEP_SUMMARY"
           done
-          lscpu | grep -E 'Model name|^CPU\(s\)|Flags' | cut -c1-200
