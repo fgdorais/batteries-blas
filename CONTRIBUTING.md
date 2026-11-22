@@ -15,6 +15,15 @@ CI runs `lake build --wfail`, `lake test` and `python3 scripts/generate.py --che
 and ARM), macOS and Windows for every pull request to `main`. Add the `benchmark` label to a pull
 request to compare its speed with its base.
 
+## Performance changes
+
+The `benchmark` label times the pull request against its base in the same job, on x86 Linux, ARM
+Linux and macOS, whose CPUs differ in caches and cores. A performance change is accepted when, in
+those same-job comparisons, it is at least 10% faster on two CPU families and no row is more than
+5% slower on any. `scripts/bench_compare.py` marks both. Numbers from different runs, or from one
+machine only, are hints, not evidence: GitHub's runners vary, and tuning to one of them has cost
+speed on the others. No change may alter the Reference BLAS order of operations.
+
 ## Generated files
 
 The `Float32` routines, tests and benchmarks are generated from the `Float64` versions. Edit only
