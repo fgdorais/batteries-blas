@@ -1,6 +1,7 @@
 name: Benchmarks
 
 # Runs only on request: from the Actions tab, or by adding the `benchmark` label to a pull request.
+# It also times OpenBLAS and Netlib's BLAS on the same benchmarks, with `scripts/cblas_bench.c`.
 on:
   workflow_dispatch:
     inputs:
@@ -77,3 +78,32 @@ jobs:
             echo "The base \`$BASE\` could not be built with this benchmark." \
               >> "$GITHUB_STEP_SUMMARY"
           fi
+
+      # The same benchmarks of OpenBLAS, on one thread, and of Netlib's reference BLAS, in both
+      # precisions. The tables are also printed in the log.
+      - name: compare with C BLAS
+        env:
+          OPENBLAS_NUM_THREADS: "1"
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq libopenblas0-pthread libblas3
+          openblas=$(find /usr/lib -name 'libopenblas.so.0' | head -n 1)
+          netlib=$(find /usr/lib -path '*/blas/libblas.so.3' | head -n 1)
+          cc -O2 -o "$RUNNER_TEMP/cblas64" scripts/cblas_bench.c -ldl
+          cc -O2 -DSINGLE -o "$RUNNER_TEMP/cblas32" scripts/cblas_bench.c -ldl
+          for p in 64 32; do
+            flag=$([ "$p" = 32 ] && echo --float32 || true)
+            for _ in 1 2 3; do
+              "$RUNNER_TEMP/bench-head" --tsv $flag >> "$RUNNER_TEMP/lean$p.tsv"
+              "$RUNNER_TEMP/cblas$p" "$openblas" >> "$RUNNER_TEMP/openblas$p.tsv"
+              "$RUNNER_TEMP/cblas$p" "$netlib" >> "$RUNNER_TEMP/netlib$p.tsv"
+            done
+            {
+              echo
+              echo "## Float$p compared with OpenBLAS (1 thread) and Netlib"
+              echo
+              python3 scripts/blas_compare.py "$RUNNER_TEMP/lean$p.tsv" \
+                "OpenBLAS=$RUNNER_TEMP/openblas$p.tsv" "Netlib=$RUNNER_TEMP/netlib$p.tsv"
+            } | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+          lscpu | grep -E 'Model name|^CPU\(s\)|Flags' | cut -c1-200
