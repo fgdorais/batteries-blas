@@ -46,14 +46,9 @@ typedef double real;
 /* The routines, named after their double-precision versions. */
 static real (*ddot)(int, const real *, int, const real *, int);
 static void (*daxpy)(int, real, const real *, int, real *, int);
-/* Not in the reference BLAS: `NULL` when the library doesn't have it. */
-static void (*daxpby)(int, real, const real *, int, real, real *, int);
-static void (*dscal)(int, real, real *, int);
 static void (*dcopy)(int, const real *, int, real *, int);
-static real (*dasum)(int, const real *, int);
 static real (*dnrm2)(int, const real *, int);
 static size_t (*idamax)(int, const real *, int);
-static void (*drot)(int, real *, int, real *, int, real, real);
 static void (*dgemv)(int, int, int, int, real, const real *, int, const real *, int,
                      real, real *, int);
 static void (*dger)(int, int, int, real, const real *, int, const real *, int, real *,
@@ -63,10 +58,8 @@ static void (*dgemm)(int, int, int, int, int, int, real, const real *, int, cons
                      int, real, real *, int);
 static void (*dsyrk)(int, int, int, int, int, real, const real *, int, real, real *, int);
 static void (*dtrsm)(int, int, int, int, int, int, int, real, const real *, int, real *, int);
-static void (*dtrmv)(int, int, int, int, int, const real *, int, real *, int);
 static void (*dsymv)(int, int, int, real, const real *, int, const real *, int, real, real *,
                      int);
-static void (*dsyr)(int, int, int, real, const real *, int, real *, int);
 static void (*dsyr2)(int, int, int, real, const real *, int, const real *, int, real *, int);
 static void (*dtrmm)(int, int, int, int, int, int, int, real, const real *, int, real *, int);
 static void (*dsymm)(int, int, int, int, int, real, const real *, int, const real *, int, real,
@@ -137,38 +130,9 @@ static double b_axpy(void *e) {
   for (int k = 0; k < reps; k++) daxpy(v->n, 0.5, v->x, v->inc, v->z, v->inc);
   return v->z[0];
 }
-static double b_axpby(void *e) {
-  L1 *v = e;
-  dcopy(v->n, v->x, v->inc, v->z, v->inc);
-  for (int k = 0; k < reps; k++) daxpby(v->n, 0.5, v->x, v->inc, 0.5, v->z, v->inc);
-  return v->z[0];
-}
-static double b_scal(void *e) {
-  L1 *v = e;
-  dcopy(v->n, v->x, 1, v->z, 1);
-  for (int k = 0; k < reps; k++) dscal(v->n, 0.5, v->z, 1);
-  return v->z[0];
-}
-static double b_copy(void *e) {
-  L1 *v = e;
-  for (int k = 0; k < reps; k++) dcopy(v->n, v->x, 1, v->z, 1);
-  return v->z[0];
-}
-/* `rot` copies both inputs first, as the first rotation of `lake exe bench` does. */
-static double b_rot(void *e) {
-  L1 *v = e;
-  dcopy(v->n, v->x, 1, v->z, 1);
-  for (int i = 0; i < v->n; i++) v->w[i] = i;
-  for (int k = 0; k < reps; k++) drot(v->n, v->z, 1, v->w, 1, 0.6, 0.8);
-  return v->z[0] + v->w[0];
-}
 static double b_dot(void *e) {
   L1 *v = e;
   return ddot(v->n, v->x, v->inc, v->x, v->inc);
-}
-static double b_asum(void *e) {
-  L1 *v = e;
-  return dasum(v->n, v->x, 1);
 }
 static double b_nrm2(void *e) {
   L1 *v = e;
@@ -208,45 +172,22 @@ static double b_ger(void *e) {
   for (int k = 0; k < reps; k++) dger(ColMajor, m, m, 1.5, v->x, 1, v->x, 1, v->b, m);
   return v->b[0];
 }
-static double trsv(L2 *v, int uplo) {
+static double trsv(L2 *v, int trans) {
   int m = v->m;
   for (int i = 0; i < m; i++) v->y[i] = 1.5 * v->x[i];
-  for (int k = 0; k < reps; k++) dtrsv(ColMajor, uplo, NoTrans, NonUnit, m, v->b, m, v->y, 1);
+  for (int k = 0; k < reps; k++) dtrsv(ColMajor, Lower, trans, NonUnit, m, v->b, m, v->y, 1);
   return v->y[0];
 }
-static double b_trsvL(void *e) { return trsv(e, Lower); }
-static double b_trsvU(void *e) { return trsv(e, Upper); }
-/* The other triangular routines, transposed or not, start from the same `y` as `trsv`. */
-static double tri(L2 *v, int uplo, int trans, int solve) {
-  int m = v->m;
-  for (int i = 0; i < m; i++) v->y[i] = 1.5 * v->x[i];
-  for (int k = 0; k < reps; k++)
-    if (solve) dtrsv(ColMajor, uplo, trans, NonUnit, m, v->b, m, v->y, 1);
-    else dtrmv(ColMajor, uplo, trans, NonUnit, m, v->b, m, v->y, 1);
-  return v->y[0];
-}
-static double b_trsvTL(void *e) { return tri(e, Lower, Trans, 1); }
-static double b_trsvTU(void *e) { return tri(e, Upper, Trans, 1); }
-static double b_trmvL(void *e) { return tri(e, Lower, NoTrans, 0); }
-static double b_trmvU(void *e) { return tri(e, Upper, NoTrans, 0); }
-static double b_trmvTL(void *e) { return tri(e, Lower, Trans, 0); }
-static double b_trmvTU(void *e) { return tri(e, Upper, Trans, 0); }
+static double b_trsvL(void *e) { return trsv(e, NoTrans); }
+static double b_trsvTL(void *e) { return trsv(e, Trans); }
 /* `symv` reads the triangular matrix as symmetric, as `lake exe bench` does. */
-static double symv(L2 *v, int uplo) {
+static double b_symvL(void *e) {
+  L2 *v = e;
   int m = v->m;
   dcopy(m, v->x, 1, v->y, 1);
   for (int k = 0; k < reps; k++)
-    dsymv(ColMajor, uplo, m, 1.5, v->b, m, v->x, 1, 0.5, v->y, 1);
+    dsymv(ColMajor, Lower, m, 1.5, v->b, m, v->x, 1, 0.5, v->y, 1);
   return v->y[0];
-}
-static double b_symvL(void *e) { return symv(e, Lower); }
-static double b_symvU(void *e) { return symv(e, Upper); }
-static double b_syr(void *e) {
-  L2 *v = e;
-  int m = v->m;
-  memcpy(v->c, v->a, (size_t)m * m * sizeof(real));
-  for (int k = 0; k < reps; k++) dsyr(ColMajor, Lower, m, 1.5, v->x, 1, v->c, m);
-  return v->c[0];
 }
 static double b_syr2(void *e) {
   L2 *v = e;
@@ -271,30 +212,20 @@ static double b_gemm(void *e) {
   dgemm(ColMajor, NoTrans, NoTrans, m, m, m, 1.5, v->a, m, v->b, m, 0.5, v->z, m);
   return v->z[0];
 }
-static double b_gemmLd(void *e) {
+static double b_gemmTN(void *e) {
   L3 *v = e;
-  int m = v->m, ld = v->ld;
-  memcpy(v->z, v->c, (size_t)ld * m * sizeof(real));
-  dgemm(ColMajor, NoTrans, NoTrans, m, m, m, 1.5, v->a, ld, v->b, ld, 0.5, v->z, ld);
-  return v->z[0];
-}
-static double gemmT(L3 *v, int ta, int tb) {
   int m = v->m;
   memcpy(v->z, v->c, (size_t)m * m * sizeof(real));
-  dgemm(ColMajor, ta, tb, m, m, m, 1.5, v->a, m, v->b, m, 0.5, v->z, m);
+  dgemm(ColMajor, Trans, NoTrans, m, m, m, 1.5, v->a, m, v->b, m, 0.5, v->z, m);
   return v->z[0];
 }
-static double b_gemmTN(void *e) { return gemmT(e, Trans, NoTrans); }
-static double b_gemmNT(void *e) { return gemmT(e, NoTrans, Trans); }
-static double b_gemmTT(void *e) { return gemmT(e, Trans, Trans); }
-static double gemmtr(L3 *v, int ta) {
+static double b_gemmtr(void *e) {
+  L3 *v = e;
   int m = v->m;
   memcpy(v->z, v->c, (size_t)m * m * sizeof(real));
-  dgemmtr(ColMajor, Lower, ta, NoTrans, m, m, 1.5, v->a, m, v->b, m, 0.5, v->z, m);
+  dgemmtr(ColMajor, Lower, NoTrans, NoTrans, m, m, 1.5, v->a, m, v->b, m, 0.5, v->z, m);
   return v->z[0];
 }
-static double b_gemmtr(void *e) { return gemmtr(e, NoTrans); }
-static double b_gemmtrTN(void *e) { return gemmtr(e, Trans); }
 
 /* As `gemm`, `syrk` and `trsm` write into a copy of `C`, or of `B`, which is `c`. */
 static double b_syrk(void *e) {
@@ -322,35 +253,22 @@ static double tri3(L3 *v, int side, int uplo, int trans, int solve) {
 static double b_trsmL(void *e) { return tri3(e, Left, Lower, NoTrans, 1); }
 static double b_trsmR(void *e) { return tri3(e, Right, Upper, NoTrans, 1); }
 static double b_trsmTL(void *e) { return tri3(e, Left, Lower, Trans, 1); }
-static double b_trsmTR(void *e) { return tri3(e, Right, Upper, Trans, 1); }
 static double b_trmmL(void *e) { return tri3(e, Left, Lower, NoTrans, 0); }
-static double b_trmmR(void *e) { return tri3(e, Right, Upper, NoTrans, 0); }
-static double b_trmmTL(void *e) { return tri3(e, Left, Lower, Trans, 0); }
-static double b_trmmTR(void *e) { return tri3(e, Right, Upper, Trans, 0); }
 /* `symm` reads the triangular matrix as symmetric, as `lake exe bench` does. */
-static double symm(L3 *v, int side, int uplo) {
-  int m = v->m;
-  memcpy(v->z, v->c, (size_t)m * m * sizeof(real));
-  dsymm(ColMajor, side, uplo, m, m, 1.5, v->b, m, v->a, m, 0.5, v->z, m);
-  return v->z[0];
-}
-static double b_symmL(void *e) { return symm(e, Left, Lower); }
-static double b_symmLd(void *e) {
+static double b_symmL(void *e) {
   L3 *v = e;
-  int m = v->m, ld = v->ld;
-  memcpy(v->z, v->c, (size_t)ld * m * sizeof(real));
-  dsymm(ColMajor, Left, Lower, m, m, 1.5, v->b, ld, v->a, ld, 0.5, v->z, ld);
-  return v->z[0];
-}
-static double b_symmR(void *e) { return symm(e, Right, Upper); }
-static double syr2k(L3 *v, int trans) {
   int m = v->m;
   memcpy(v->z, v->c, (size_t)m * m * sizeof(real));
-  dsyr2k(ColMajor, Lower, trans, m, m, 1.5, v->a, m, v->d, m, 0.5, v->z, m);
+  dsymm(ColMajor, Left, Lower, m, m, 1.5, v->b, m, v->a, m, 0.5, v->z, m);
   return v->z[0];
 }
-static double b_syr2k(void *e) { return syr2k(e, NoTrans); }
-static double b_syr2kT(void *e) { return syr2k(e, Trans); }
+static double b_syr2k(void *e) {
+  L3 *v = e;
+  int m = v->m;
+  memcpy(v->z, v->c, (size_t)m * m * sizeof(real));
+  dsyr2k(ColMajor, Lower, NoTrans, m, m, 1.5, v->a, m, v->d, m, 0.5, v->z, m);
+  return v->z[0];
+}
 
 int main(int argc, char **argv) {
   if (argc < 2) {
@@ -366,22 +284,16 @@ int main(int argc, char **argv) {
   if (argc > 3) rounds = atoi(argv[3]);
   ddot = sym(lib, CBLAS("dot"));
   daxpy = sym(lib, CBLAS("axpy"));
-  daxpby = dlsym(lib, CBLAS("axpby"));
-  dscal = sym(lib, CBLAS("scal"));
   dcopy = sym(lib, CBLAS("copy"));
-  dasum = sym(lib, CBLAS("asum"));
   dnrm2 = sym(lib, CBLAS("nrm2"));
   idamax = sym(lib, CBLAS_I("amax"));
-  drot = sym(lib, CBLAS("rot"));
   dgemv = sym(lib, CBLAS("gemv"));
   dger = sym(lib, CBLAS("ger"));
   dtrsv = sym(lib, CBLAS("trsv"));
   dgemm = sym(lib, CBLAS("gemm"));
   dsyrk = sym(lib, CBLAS("syrk"));
   dtrsm = sym(lib, CBLAS("trsm"));
-  dtrmv = sym(lib, CBLAS("trmv"));
   dsymv = sym(lib, CBLAS("symv"));
-  dsyr = sym(lib, CBLAS("syr"));
   dsyr2 = sym(lib, CBLAS("syr2"));
   dtrmm = sym(lib, CBLAS("trmm"));
   dsymm = sym(lib, CBLAS("symm"));
@@ -393,31 +305,16 @@ int main(int argc, char **argv) {
   L1 v = {n, 1, vec(n), vec(n), vec(n)};
   snprintf(name, sizeof name, "axpy ×%d", reps);
   time_it(name, b_axpy, &v);
-  if (daxpby) {
-    snprintf(name, sizeof name, "axpby ×%d / axpy", reps);
-    time_it(name, b_axpby, &v);
-  }
-  snprintf(name, sizeof name, "scal ×%d", reps);
-  time_it(name, b_scal, &v);
-  snprintf(name, sizeof name, "copy ×%d", reps);
-  time_it(name, b_copy, &v);
-  snprintf(name, sizeof name, "rot ×%d", reps);
-  time_it(name, b_rot, &v);
   time_it("dot", b_dot, &v);
-  time_it("asum", b_asum, &v);
   time_it("nrm2", b_nrm2, &v);
   time_it("iamax", b_iamax, &v);
-  L1 up = {n, 1, malloc(n * sizeof(real)), v.z, v.w};
-  for (int i = 0; i < n; i++) up.x[i] = i;
-  time_it("iamax (increasing)", b_iamax, &up);
   L1 v2 = {n, 2, vec(2 * (size_t)n), vec(2 * (size_t)n), NULL};
   snprintf(name, sizeof name, "axpy ×%d, stride 2 / stride 1", reps);
   time_it(name, b_axpy, &v2);
-  time_it("dot, stride 2 / stride 1", b_dot, &v2);
 
-  int l2[] = {256, 1024, 2048};
-  for (int s = 0; s < 3; s++) {
-    int m = l2[s];
+  /* The sizes of `lake exe bench`. */
+  {
+    int m = 512;
     L2 w = {m, 1, mat(m, 1), vec(m), vec(2 * (size_t)m), mat(m, 1), mat(m, 1)};
     snprintf(name, sizeof name, "gemv %d ×%d", m, reps);
     time_it(name, b_gemv, &w);
@@ -425,99 +322,47 @@ int main(int argc, char **argv) {
     time_it(name, b_gemvT, &w);
     snprintf(name, sizeof name, "ger %d ×%d", m, reps);
     time_it(name, b_ger, &w);
-    L2 w2 = w;
-    w2.inc = 2;
-    w2.x = vec(2 * (size_t)m);
-    snprintf(name, sizeof name, "gemv %d ×%d, stride 2 / stride 1", m, reps);
-    time_it(name, b_gemv, &w2);
     for (int j = 0; j < m; j++)
       for (int i = 0; i < m; i++)
         w.b[i + (size_t)m * j] = i == j ? m + 4 + i : (real)((i * 7 + j * 13) % 11) - 5;
-    snprintf(name, sizeof name, "trsv lower %d ×%d", m, reps);
-    time_it(name, b_trsvL, &w);
-    snprintf(name, sizeof name, "trsv upper %d ×%d", m, reps);
-    time_it(name, b_trsvU, &w);
     struct { const char *name; double (*f)(void *); } more[] = {
-      {"trsvT lower %d ×%d / trsv", b_trsvTL}, {"trsvT upper %d ×%d / trsv", b_trsvTU},
-      {"trmv lower %d ×%d / trsv", b_trmvL}, {"trmv upper %d ×%d / trsv", b_trmvU},
-      {"trmvT lower %d ×%d / trsv", b_trmvTL}, {"trmvT upper %d ×%d / trsv", b_trmvTU},
-      {"symv lower %d ×%d / gemv", b_symvL}, {"symv upper %d ×%d / gemv", b_symvU},
-      {"syr lower %d ×%d / ger", b_syr}, {"syr2 upper %d ×%d / ger", b_syr2}};
+      {"trsv lower %d ×%d", b_trsvL}, {"trsvT lower %d ×%d / trsv", b_trsvTL},
+      {"symv lower %d ×%d / gemv", b_symvL}, {"syr2 upper %d ×%d / ger", b_syr2}};
     for (size_t i = 0; i < sizeof more / sizeof more[0]; i++) {
       snprintf(name, sizeof name, more[i].name, m, reps);
       time_it(name, more[i].f, &w);
     }
   }
 
-  int l3[] = {64, 256, 512, 1024};
-  for (int s = 0; s < 4; s++) {
+  int l3[] = {512, 1024};
+  for (int s = 0; s < 2; s++) {
     int m = l3[s];
     L3 g = {m, m, mat(m, 1), mat(m, 2), mat(m, 3), mat(m, 3), NULL};
     snprintf(name, sizeof name, "gemm %d", m);
     time_it(name, b_gemm, &g);
-    /* The same matrices as blocks of larger ones, with the leading dimension `m + 8`. */
-    int ld = m + 8;
-    L3 h = {m, ld, vec((size_t)ld * m), vec((size_t)ld * m), vec((size_t)ld * m),
-            vec((size_t)ld * m), NULL};
-    for (int j = 0; j < m; j++) {
-      memcpy(h.a + (size_t)ld * j, g.a + (size_t)m * j, m * sizeof(real));
-      memcpy(h.b + (size_t)ld * j, g.b + (size_t)m * j, m * sizeof(real));
-      memcpy(h.c + (size_t)ld * j, g.c + (size_t)m * j, m * sizeof(real));
-    }
-    snprintf(name, sizeof name, "gemm %d, ld = %d + 8 / ld = %d", m, m, m);
-    time_it(name, b_gemmLd, &h);
     snprintf(name, sizeof name, "gemmTN %d / gemm", m);
     time_it(name, b_gemmTN, &g);
-    snprintf(name, sizeof name, "gemmNT %d / gemm", m);
-    time_it(name, b_gemmNT, &g);
-    snprintf(name, sizeof name, "gemmTT %d / gemm", m);
-    time_it(name, b_gemmTT, &g);
     if (dgemmtr) {
       snprintf(name, sizeof name, "gemmtr lower %d, half the operations / gemm", m);
       time_it(name, b_gemmtr, &g);
-      snprintf(name, sizeof name, "gemmtrTN lower %d, half the operations / gemmTN", m);
-      time_it(name, b_gemmtrTN, &g);
     }
   }
 
-  int l3s[] = {256, 512, 1024};
-  for (int s = 0; s < 3; s++) {
-    int m = l3s[s];
+  {
+    int m = 512;
     L3 g = {m, m, mat(m, 1), mat(m, 1), mat(m, 3), mat(m, 3), mat(m, 2)};
     for (int j = 0; j < m; j++)
       for (int i = 0; i < m; i++)
         g.b[i + (size_t)m * j] = i == j ? m + 4 + i : (real)((i * 7 + j * 13) % 11) - 5;
-    snprintf(name, sizeof name, "syrk lower %d", m);
-    time_it(name, b_syrk, &g);
-    snprintf(name, sizeof name, "syrkT lower %d", m);
-    time_it(name, b_syrkT, &g);
-    snprintf(name, sizeof name, "trsm lower %d", m);
-    time_it(name, b_trsmL, &g);
-    snprintf(name, sizeof name, "trsmRight upper %d", m);
-    time_it(name, b_trsmR, &g);
     struct { const char *name; double (*f)(void *); } more[] = {
-      {"trsmT lower %d / trsm", b_trsmTL}, {"trsmRightT upper %d / trsmRight", b_trsmTR},
-      {"trmm lower %d / trsm", b_trmmL}, {"trmmRight upper %d / trsmRight", b_trmmR},
-      {"trmmT lower %d / trsm", b_trmmTL}, {"trmmRightT upper %d / trsmRight", b_trmmTR},
-      {"symm lower %d, 2 m³ operations", b_symmL},
-      {"symmRight upper %d, 2 m³ operations", b_symmR},
-      {"syr2k lower %d, 2 m³ operations / syrk", b_syr2k},
-      {"syr2kT lower %d, 2 m³ operations / syrkT", b_syr2kT}};
+      {"syrk lower %d", b_syrk}, {"syrkT lower %d", b_syrkT}, {"trsm lower %d", b_trsmL},
+      {"trsmRight upper %d", b_trsmR}, {"trsmT lower %d / trsm", b_trsmTL},
+      {"trmm lower %d / trsm", b_trmmL}, {"symm lower %d, 2 m³ operations", b_symmL},
+      {"syr2k lower %d, 2 m³ operations / syrk", b_syr2k}};
     for (size_t i = 0; i < sizeof more / sizeof more[0]; i++) {
       snprintf(name, sizeof name, more[i].name, m);
       time_it(name, more[i].f, &g);
     }
-    /* `symm` on the same matrices as blocks of larger ones, with the leading dimension `m + 8`. */
-    int ld = m + 8;
-    L3 h = {m, ld, vec((size_t)ld * m), vec((size_t)ld * m), vec((size_t)ld * m),
-            vec((size_t)ld * m), NULL};
-    for (int j = 0; j < m; j++) {
-      memcpy(h.a + (size_t)ld * j, g.a + (size_t)m * j, m * sizeof(real));
-      memcpy(h.b + (size_t)ld * j, g.b + (size_t)m * j, m * sizeof(real));
-      memcpy(h.c + (size_t)ld * j, g.c + (size_t)m * j, m * sizeof(real));
-    }
-    snprintf(name, sizeof name, "symm lower %d, 2 m³ operations, ld = %d + 8 / symm", m, m);
-    time_it(name, b_symmLd, &h);
   }
   return 0;
 }

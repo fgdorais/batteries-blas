@@ -363,8 +363,13 @@ its Lean model.
 
 `lake exe bench [--tsv] [--float32] [size] [rounds]` times the `Float64` routines, or the
 `Float32` ones with `--float32`, and compares each with a hand-written `USize` loop where there is
-one. `lake build` compiles it so that it keeps up with the API, but CI doesn't run it. To run it on GitHub, add the `benchmark` label to a pull request, which
-compares the pull request with its base, or start the Benchmarks workflow from the Actions tab.
+one. It covers one routine of each kind of kernel rather than every routine: `axpy`, `dot`,
+`nrm2`, `iamax` and a strided `axpy` on a million elements, `gemv`, `gemvT`, `ger`, `trsv`,
+`trsvT`, `symv` and `syr2` at size 512, `gemm`, `gemmTN` and `gemmtr` at 512 and 1024, and
+`syrk`, `syrkT`, `trsm`, `trsmRight`, `trsmT`, `trmm`, `symm` and `syr2k` at 512. `lake build`
+compiles it so that it keeps up with the API, but CI doesn't run it. To run it on GitHub, add the
+`benchmark` label to a pull request, which compares the pull request with its base, or start the
+Benchmarks workflow from the Actions tab.
 
 The `Float32` sources, tests and benchmarks, in `BLAS/Float32/`, `BLASTest/Float32/` and
 `BLASBench/Float32.lean`, are generated from the `Float64` versions. Make changes in
