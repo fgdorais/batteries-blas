@@ -22,9 +22,11 @@ Changes that would reorder them, such as partial sums in `dot`, `asum` and `nrm2
 
 ## Transposed `gemm`
 
-- [ ] `gemmTN`, `gemmTT`: compute two columns of `C` per pass over four columns of `A`, so that
-  each pass reads `A` once for two columns of `B`. They run at about 7.5 GFLOP/s at 256–1024, half
-  of `gemm`, since each column of `C` reads all of `A`. Each sum keeps its order. Not measured yet.
+- [x] `gemmTN`, `gemmTT`: compute four rows of two columns of `C` per pass over four columns of
+  `A` and two of `B`, with eight sums, so that each pass reads `A` once for two columns of `B`.
+  Each sum keeps its order. About 1.15–1.4× locally (7.4–9.5 GFLOP/s at 256–1024, from 6.4–7.2).
+  A Lean recursion with eight `Float` arguments and an eight-variable `inplace` loop measured the
+  same.
 
 ## `gemmtr`
 
