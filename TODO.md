@@ -58,9 +58,15 @@ Changes that would reorder them, such as partial sums in `dot`, `asum` and `nrm2
   256–1024), one column at a time.
 - [x] `trmmT`: four columns at a time, which share the reads of `A`, each with its dot products in
   their order. About 2–3× locally (6–8 GFLOP/s at 256–1024, near `trsm`).
-- [ ] `symm`, `symmRight`: as `trmm` and `trmmRight`, four columns of `C` at a time, or four added
-  columns of `B` per pass over the rows of a column of `C`. Each element keeps its order of
-  operations. They run at 5.4–7.8 GFLOP/s at 256–1024, one column at a time. Not measured yet.
+- [x] `symm`: four columns of `B` and `C` at a time, which share the reads of `A`, each element with
+  its operations in their order. About 1.1–1.4× locally (6.2–7.7 GFLOP/s at 256–1024, from
+  5.4–6.1).
+- [ ] `symm`: check the four-column pass at power-of-two leading dimensions on several CPUs. It
+  streams nine columns at once, and on one AMD EPYC 9V74 run (8-way L1) it ran at 2.8 GFLOP/s at
+  512 and 1024, against 5.9 at 256. Three columns (seven streams) would stay within 8 ways.
+- [ ] `symmRight`: four added columns of `B` per pass over the rows of a column of `C`, as `gemv`
+  adds four columns. Each element keeps its order of operations. It runs at 5.4–7.8 GFLOP/s at
+  256–1024, one column at a time.
 - [ ] `syr2k`: two columns at a time, as `syrk` does, with each column's skipped terms kept. It runs
   at 5.2–7.3 GFLOP/s at 256–1024, one column at a time.
 - [ ] `trsm`, `trsmRight`: update the rest of `B` by the `gemm` kernel after each block of solved

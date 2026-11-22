@@ -80,6 +80,8 @@ SPECIFIC = [
   ('public def gamsq : Float := 16777216', 'public def gamsq : Float := 1.67772e7'),
   ('the literal `5.9604645D-8`', 'the literal `5.96046E-8`'),
   ('public def rgamsq : Float := 5.9604645e-8', 'public def rgamsq : Float := 5.96046e-8'),
+  # The test of `symm` for columns that are 4 KiB apart.
+  ('symmMatchesLd 512', 'symmMatchesLd 1024'),
   # The tests of `rotg` whose squares overflow or underflow.
   ('Float.scaleB 3 1000) (Float.scaleB 4 1000)).r == Float.scaleB 5 1000',
    'Float.scaleB 3 120) (Float.scaleB 4 120)).r == Float.scaleB 5 120'),
