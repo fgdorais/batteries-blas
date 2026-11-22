@@ -77,13 +77,12 @@ Changes that would reorder them, such as partial sums in `dot`, `asum` and `nrm2
 
 ## Level 2 (0.9–1.3× at 1024 and 2048, 1.2–1.8× at 256)
 
-- [ ] `trmvT`, like `trsvT` below: it runs at about 1.5–2× the time of `trmv`, which runs at the
-  speed of `trsv`. Each element is a dot product of a column with `x`, so four columns at a time
-  share the reads of `x`, each with its terms in their order. Not measured yet.
-- [ ] `trsvT`: compute four elements at a time, as `gemvT` computes four dot products, with each
-  element's terms in their order: the next three elements depend only on the terms solved so far,
-  except for a 4 × 4 triangle at the end. It runs at 3.2–4.5 GFLOP/s at 256–2048, about half of
-  `trsv`. Not measured yet.
+- [x] `trmvT`: four elements per pass, which share the reads of `x`, each with its terms in their
+  order (the terms of the four elements' own rows first). At the speed of `trsv` locally
+  (5–6.5 GFLOP/s at 256–2048, from 3–3.7).
+- [x] `trsvT`: four elements per pass, as `gemvT` computes four dot products, with each element's
+  terms in their order: the four share the solved range, then finish their 4 × 4 triangle. About
+  1.5–2× locally (5–6.3 GFLOP/s at 256–2048, near `trsv`, from 3.2–4.5).
 
 - [ ] `trsv`: update the rest of `x` four columns at a time after each block of four solved
   elements, as `gemv` does. Each element keeps its order of operations. Not measured yet.
