@@ -391,8 +391,9 @@ The `syrk`, `trsm`, `trmm`, `symm` and `syr2k` benchmarks for `m × m` matrices:
 on the lower triangle, `trsm`, `trsmT`, `trmm`, `trmmT` and `symm` on the lower triangle and
 `trsmRight`, `trsmRightT`, `trmmRight`, `trmmRightT` and `symmRight` on the upper one, with a
 non-unit diagonal. Each makes about `m * m * m` floating-point operations per call, and
-`2 * m * m * m` for `symm`, `symmRight`, and `syr2k` and `syr2kT` on the lower triangle. As for
-`gemm`, each call copies the shared `C` or `B` first.
+`2 * m * m * m` for `symm`, `symmRight`, and `syr2k` and `syr2kT` on the lower triangle. `symm`
+also runs with the leading dimension `m + 8`. As for `gemm`, each call copies the shared `C` or `B`
+first.
 -/
 def level3Rows (rounds m : Nat) : IO (List Row × Nat) := do
   let A := mat m 1
@@ -417,6 +418,14 @@ def level3Rows (rounds m : Nat) : IO (List Row × Nat) := do
   let tsm ← time rounds m fun q => (BLAS.Float32.Mat.symm .lower (α q) T A 0.5 C).data[0]!
   let tsmr ← time rounds m fun q =>
     (BLAS.Float32.Mat.symmRight .upper (α q) T A 0.5 C).data[0]!
+  -- `symm` on matrices with the leading dimension `m + 8`, whose columns are not a multiple of
+  -- 4 KiB apart when `m` is a power of 2.
+  let ld (X : BLAS.Float32.Mat m m) : BLAS.Float32.Mat m m :=
+    (BLAS.Float32.Mat.ofLd? (vec ((m + 8) * m)) 0 (m + 8)).getD X
+  let T₁ := ld T
+  let A₁ := ld A
+  let C₁ := ld C
+  let tsml ← time rounds m fun q => (BLAS.Float32.Mat.symm .lower (α q) T₁ A₁ 0.5 C₁).data[0]!
   let B := mat m 2
   let ts2 ← time rounds m fun q => (BLAS.Float32.Mat.syr2k .lower (α q) A B 0.5 C).data[0]!
   let ts2T ← time rounds m fun q => (BLAS.Float32.Mat.syr2kT .lower (α q) A B 0.5 C).data[0]!
@@ -430,6 +439,7 @@ def level3Rows (rounds m : Nat) : IO (List Row × Nat) := do
     ⟨s!"trmmRightT upper {m} / trsmRight", tmrT, some tr⟩,
     ⟨s!"symm lower {m}, 2 m³ operations", tsm, none⟩,
     ⟨s!"symmRight upper {m}, 2 m³ operations", tsmr, none⟩,
+    ⟨s!"symm lower {m}, 2 m³ operations, ld = {m} + 8 / symm", tsml, some tsm⟩,
     ⟨s!"syr2k lower {m}, 2 m³ operations / syrk", ts2, some ts⟩,
     ⟨s!"syr2kT lower {m}, 2 m³ operations / syrkT", ts2T, some tt⟩], m * m * m)
 

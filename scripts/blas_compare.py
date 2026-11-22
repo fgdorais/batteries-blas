@@ -43,7 +43,7 @@ def flops(name):
     if m:
         return 2 * int(m.group(1)) ** 3
     m = re.fullmatch(r"(\w+) (?:lower|upper) (\d+)(, 2 m³ operations|, half the operations)?"
-                     r"(?: / \w+)?", name)
+                     r"(?:, ld = \d+ \+ 8)?(?: / \w+)?", name)
     if m and m.group(1) in ("syrk", "syrkT", "trsm", "trsmT", "trsmRight", "trsmRightT", "trmm",
                             "trmmT", "trmmRight", "trmmRightT", "symm", "symmRight", "syr2k",
                             "syr2kT", "gemmtr", "gemmtrTN"):

@@ -335,6 +335,13 @@ static double symm(L3 *v, int side, int uplo) {
   return v->z[0];
 }
 static double b_symmL(void *e) { return symm(e, Left, Lower); }
+static double b_symmLd(void *e) {
+  L3 *v = e;
+  int m = v->m, ld = v->ld;
+  memcpy(v->z, v->c, (size_t)ld * m * sizeof(real));
+  dsymm(ColMajor, Left, Lower, m, m, 1.5, v->b, ld, v->a, ld, 0.5, v->z, ld);
+  return v->z[0];
+}
 static double b_symmR(void *e) { return symm(e, Right, Upper); }
 static double syr2k(L3 *v, int trans) {
   int m = v->m;
@@ -500,6 +507,17 @@ int main(int argc, char **argv) {
       snprintf(name, sizeof name, more[i].name, m);
       time_it(name, more[i].f, &g);
     }
+    /* `symm` on the same matrices as blocks of larger ones, with the leading dimension `m + 8`. */
+    int ld = m + 8;
+    L3 h = {m, ld, vec((size_t)ld * m), vec((size_t)ld * m), vec((size_t)ld * m),
+            vec((size_t)ld * m), NULL};
+    for (int j = 0; j < m; j++) {
+      memcpy(h.a + (size_t)ld * j, g.a + (size_t)m * j, m * sizeof(real));
+      memcpy(h.b + (size_t)ld * j, g.b + (size_t)m * j, m * sizeof(real));
+      memcpy(h.c + (size_t)ld * j, g.c + (size_t)m * j, m * sizeof(real));
+    }
+    snprintf(name, sizeof name, "symm lower %d, 2 m³ operations, ld = %d + 8 / symm", m, m);
+    time_it(name, b_symmLd, &h);
   }
   return 0;
 }
