@@ -46,17 +46,18 @@ Changes that would reorder them, such as partial sums in `dot`, `asum` and `nrm2
 - [ ] `trsmRight`: subtract four solved columns per pass over the rows of column `j`, as `gemv` adds
   four columns, so that each element keeps its order of operations. It is 3× behind at 256 and 8×
   at 1024, where `trsm` is 2.2× and 4.5×. Not measured yet.
-- [ ] `trsmT`: solve four columns of `B` at a time, as `trsm` does. It is about 3× slower than
-  `trsm` at 256–1024 (3.1 GFLOP/s), solving one column at a time by dot products.
-- [ ] `trsmRightT`: fuse the solve of a column with the subtractions from the columns still to
-  solve, as `trsmRight` does. It is 6× slower than `trsmRight` at 256, 4.2× at 512 and 2× at 1024
-  (1.6–3.4 GFLOP/s), since each element reads a row of `A` with a stride.
+- [x] `trsmT`: solve four columns of `B` at a time, which share the reads of `A`, each with its
+  dot products in their order. About 2–3× locally (5.5–7 GFLOP/s at 256–1024, near `trsm`).
+- [x] `trsmRightT`: solve a column at a time with Lean recursion over the columns (three nested
+  `inplace` loops compiled to mutual calls), subtracting four solved columns per pass over the rows
+  of the column, in order. At parity with `trsmRight` locally (5.7–12.5 GFLOP/s at 256–1024), from
+  2–6× slower.
 - [ ] `trmm`, `trmmRight`, `trmmRightT`: four columns of `B` at a time, as `trsm` does, or four
   added columns per pass over the rows, as `gemv` adds four columns. Each element keeps its order
   of operations. They run at 1–1.9× the time of `trsm` and `trsmRight` (4.5–8.2 GFLOP/s at
   256–1024), one column at a time.
-- [ ] `trmmT`: four columns at a time, which share the reads of `A`, each with its dot products in
-  their order. It runs at 2.2–3.3× the time of `trsm` (2.8–4.2 GFLOP/s), like `trsmT`.
+- [x] `trmmT`: four columns at a time, which share the reads of `A`, each with its dot products in
+  their order. About 2–3× locally (6–8 GFLOP/s at 256–1024, near `trsm`).
 - [ ] `symm`, `symmRight`: as `trmm` and `trmmRight`, four columns of `C` at a time, or four added
   columns of `B` per pass over the rows of a column of `C`. Each element keeps its order of
   operations. They run at 5.4–7.8 GFLOP/s at 256–1024, one column at a time. Not measured yet.
@@ -92,6 +93,9 @@ Changes that would reorder them, such as partial sums in `dot`, `asum` and `nrm2
   benchmarked yet, against `scripts/cblas_bench.c` or otherwise. They run the loops of the reference
   BLAS one column at a time; `gbmv` and `sbmv` could take two or four columns per pass, as `gemv`
   does, with each element's terms in their order.
+- [ ] The packed routines `spmv`, `spr`, `spr2`, `tpmv`, `tpmvT`, `tpsv` and `tpsvT` are not
+  benchmarked yet either. They run the loops of the reference BLAS one column at a time, with the
+  packed index computed per element; `spmv` could take two columns per pass, as `symv` does.
 - [ ] `gemvT` at 256 is 1.8× behind, and 4.5× in `Float32`, against 1.0–1.1× (1.6–1.7× in
   `Float32`) at 1024 and 2048. Not investigated yet.
 

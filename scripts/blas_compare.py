@@ -34,18 +34,20 @@ def load(path):
 
 def flops(name):
     """The floating-point operations of a benchmark, if they are counted."""
-    m = re.fullmatch(r"(gemvT?|ger|trsv lower|trsv upper) (\d+) ×(\d+)", name)
+    m = re.fullmatch(r"(\w+)(?: lower| upper)? (\d+) ×(\d+)(?: / \w+)?", name)
+    if m and m.group(1) in ("gemv", "gemvT", "ger", "symv", "syr2"):
+        return 2 * int(m.group(2)) ** 2 * int(m.group(3))
+    if m and m.group(1) in ("trsv", "trsvT", "trmv", "trmvT", "syr"):
+        return int(m.group(2)) ** 2 * int(m.group(3))
+    m = re.fullmatch(r"gemm(?:Naive|TN|NT|TT)? (\d+)(?:, ld = .*| / gemm)?", name)
     if m:
-        k, n, reps = m.group(1), int(m.group(2)), int(m.group(3))
-        return (1 if k.startswith("trsv") else 2) * n * n * reps
-    m = re.fullmatch(r"gemm(?:Naive)? (\d+)", name)
-    if m:
-        n = int(m.group(1))
-        return 2 * n * n * n
-    m = re.fullmatch(r"(?:syrkT?|trsm|trsmRight) (?:lower|upper) (\d+)", name)
-    if m:
-        n = int(m.group(1))
-        return n * n * n
+        return 2 * int(m.group(1)) ** 3
+    m = re.fullmatch(r"(\w+) (?:lower|upper) (\d+)(, 2 m³ operations|, half the operations)?"
+                     r"(?: / \w+)?", name)
+    if m and m.group(1) in ("syrk", "syrkT", "trsm", "trsmT", "trsmRight", "trsmRightT", "trmm",
+                            "trmmT", "trmmRight", "trmmRightT", "symm", "symmRight", "syr2k",
+                            "syr2kT", "gemmtr", "gemmtrTN"):
+        return (2 if m.group(3) == ", 2 m³ operations" else 1) * int(m.group(2)) ** 3
     return None
 
 
