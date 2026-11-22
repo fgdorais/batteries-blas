@@ -11,9 +11,11 @@ lake test            # the `#guard` tests in `BLASTest`
 lake exe bench       # the benchmarks, when a change may affect speed
 ```
 
-CI runs `lake build --wfail`, `lake test` and `python3 scripts/generate.py --check` on Linux (x86
-and ARM), macOS and Windows for every pull request to `main`. Add the `benchmark` label to a pull
-request to compare its speed with its base.
+CI runs `lake build --wfail`, `lake test` and `python3 scripts/generate.py --check`. Pushes to a
+pull request run them on Linux x86_64 only; the merge queue runs them on Linux (x86 and ARM), macOS
+and Windows before anything reaches `main`. To test every platform earlier, add the `full-ci` label
+(it applies from the next push) or run the CI Pipeline workflow on the branch from the Actions tab.
+Add the `benchmark` label to a pull request to compare its speed with its base.
 
 ## Performance changes
 

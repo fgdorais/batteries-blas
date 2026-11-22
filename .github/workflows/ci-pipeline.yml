@@ -1,13 +1,32 @@
 name: CI Pipeline
 
+# Pushes to a pull request are tested on Linux x86_64 only, unless the pull request has the
+# `full-ci` label. The merge queue and manual runs test on every platform, so every platform is
+# tested before anything reaches `main`. The `CI` job sums up the others: it is the one check that
+# the merge queue requires.
 on:
   pull_request:
     branches: [ "main", "nightly-testing" ]
+  merge_group:
+  workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.head_ref }}
+  group: ci-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
   run-ci:
     uses: ./.github/workflows/build.yml
+    with:
+      full: ${{ github.event_name != 'pull_request' ||
+        contains(github.event.pull_request.labels.*.name, 'full-ci') }}
+
+  ci:
+    name: CI
+    if: always()
+    needs: run-ci
+    runs-on: ubuntu-latest
+    steps:
+      - name: check the results
+        if: needs.run-ci.result != 'success'
+        run: exit 1
