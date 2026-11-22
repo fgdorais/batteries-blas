@@ -52,13 +52,13 @@ structure Row where
 def reps : Nat := 10
 
 /-- The sizes of the Level 2 benchmarks. -/
-def level2Sizes : List Nat := [256, 1024, 2048]
+def level2Sizes : List Nat := [512]
 
-/-- The sizes of the `syrk` and `trsm` benchmarks. -/
-def level3Sizes : List Nat := [256, 512, 1024]
+/-- The sizes of the Level 3 benchmarks other than `gemm`. -/
+def level3Sizes : List Nat := [512]
 
 /-- The sizes of the `gemm` benchmarks. -/
-def gemmSizes : List Nat := [64, 256, 512, 1024]
+def gemmSizes : List Nat := [512, 1024]
 
 /--
 A baseline for the harness: a plain read-only loop over a `Float64Array` of `n` elements, against

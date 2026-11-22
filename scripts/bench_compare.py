@@ -6,13 +6,15 @@
 Usage: bench_compare.py BASE.tsv HEAD.tsv
 
 Each file holds the `lake exe bench --tsv` output of one or more runs. For each benchmark the
-fastest time is kept, and the table shows the ratio head / base. Ratios above 1.25 are marked,
-since GitHub's runners vary by about that much between runs.
+fastest time is kept, and the table shows the ratio head / base, which is a time ratio: below 1
+means head is faster. Following the acceptance rule in CONTRIBUTING.md, ratios of at most 0.90 are
+marked as wins and ratios above 1.05 as slowdowns.
 """
 
 import sys
 
-THRESHOLD = 1.25
+WIN = 0.90
+LOSS = 1.05
 
 
 def load(path):
@@ -45,7 +47,7 @@ def main():
             continue
         b = base[name]
         ratio = h / b if b > 0 else float("inf")
-        mark = " ⚠️" if ratio > THRESHOLD else ""
+        mark = " ⚠️" if ratio > LOSS else " ✅" if ratio <= WIN else ""
         print(f"| {name} | {b:.3f} | {h:.3f} | {ratio:.2f}{mark} |")
 
 

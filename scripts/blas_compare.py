@@ -9,7 +9,6 @@ LEAN.tsv holds the `lake exe bench --tsv` output, and each OTHER.tsv the `cblas_
 one implementation, which is labeled NAME. Each file may hold several runs, of which the fastest
 time is kept. The table shows each time in milliseconds, or GFLOP/s where the operation count is
 known, and the ratio of the implementation's speed to `BLAS`'s: 2.0 means it is twice as fast.
-`gemm` and `gemmNaive` are both compared with the implementation's `gemm`.
 """
 
 import re
@@ -37,23 +36,17 @@ def flops(name):
     m = re.fullmatch(r"(\w+)(?: lower| upper)? (\d+) ×(\d+)(?: / \w+)?", name)
     if m and m.group(1) in ("gemv", "gemvT", "ger", "symv", "syr2"):
         return 2 * int(m.group(2)) ** 2 * int(m.group(3))
-    if m and m.group(1) in ("trsv", "trsvT", "trmv", "trmvT", "syr"):
+    if m and m.group(1) in ("trsv", "trsvT"):
         return int(m.group(2)) ** 2 * int(m.group(3))
-    m = re.fullmatch(r"gemm(?:Naive|TN|NT|TT)? (\d+)(?:, ld = .*| / gemm)?", name)
+    m = re.fullmatch(r"gemm(?:TN)? (\d+)(?: / gemm)?", name)
     if m:
         return 2 * int(m.group(1)) ** 3
     m = re.fullmatch(r"(\w+) (?:lower|upper) (\d+)(, 2 m³ operations|, half the operations)?"
                      r"(?: / \w+)?", name)
-    if m and m.group(1) in ("syrk", "syrkT", "trsm", "trsmT", "trsmRight", "trsmRightT", "trmm",
-                            "trmmT", "trmmRight", "trmmRightT", "symm", "symmRight", "syr2k",
-                            "syr2kT", "gemmtr", "gemmtrTN"):
+    if m and m.group(1) in ("syrk", "syrkT", "trsm", "trsmT", "trsmRight", "trmm", "symm", "syr2k",
+                            "gemmtr"):
         return (2 if m.group(3) == ", 2 m³ operations" else 1) * int(m.group(2)) ** 3
     return None
-
-
-def other_name(name):
-    """The name of the benchmark of a C BLAS that `name` compares with."""
-    return re.sub(r"^gemmNaive ", "gemm ", name)
 
 
 def main():
@@ -68,8 +61,7 @@ def main():
     print(f"| Benchmark | Unit | BLAS |{cols}")
     print("|---|---|--:|" + "--:|--:|" * len(others))
     for name in order:
-        other = other_name(name)
-        if not any(other in t for _, t in others):
+        if not any(name in t for _, t in others):
             continue
         f = flops(name)
         unit = "GFLOP/s" if f else "ms"
@@ -79,8 +71,8 @@ def main():
 
         row = f"| {name} | {unit} | {show(lean[name])} |"
         for _, t in others:
-            if other in t:
-                row += f" {show(t[other])} | {lean[name] / t[other]:.2f} |"
+            if name in t:
+                row += f" {show(t[name])} | {lean[name] / t[name]:.2f} |"
             else:
                 row += " — | — |"
         print(row)
