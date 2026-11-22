@@ -894,7 +894,27 @@ def symmMatches (m n : Nat) (uplo : Uplo) (α β : Float32) : Bool :=
 #guard [Uplo.lower, .upper].all fun u =>
   symmMatches 5 3 u 1.5 0.5 && symmMatches 1 1 u 2 0 && symmMatches 17 9 u (-0.25) 1 &&
     symmMatches 40 33 u 1 (1 / 7) && symmMatches 0 3 u 1 1 && symmMatches 3 0 u 1 1 &&
-    symmMatches 6 4 u (1 / 3) 0 && symmMatches 9 12 u 0.7 (-2)
+    symmMatches 6 4 u (1 / 3) 0 && symmMatches 9 12 u 0.7 (-2) && symmMatches 7 5 u 1.5 0.5 &&
+    symmMatches 11 6 u (-0.25) 1 && symmMatches 10 7 u (1 / 7) (-2)
+
+/-- The matrix `A` at the offset `0` with the leading dimension `L`, in an array of `1e9 + 0.5`. -/
+def ldAt (L : Nat) (A : Mat m n) : Mat m n :=
+  (Mat.ofLd? (ScalarArray.Float32Array.ofFn (n := L * n) fun p =>
+    if h : p.val % L < m ∧ p.val / L < n then A[(p.val % L, p.val / L)]'h else 1e9 + 0.5) 0
+    L).getD A
+
+/--
+Whether `symm` matches the reference loops bit for bit with `B` and `C` at the leading dimension
+`L`, and leaves the rest of `C`'s array unchanged.
+-/
+def symmMatchesLd (L m n : Nat) (uplo : Uplo) : Bool :=
+  let A := thirds (triM m 1 0 uplo)
+  let B := matThirds m n 2
+  let C := matThirds m n 3
+  let X := Mat.symm uplo 1.5 A (ldAt L B) 0.5 (ldAt L C)
+  bits X == listBits (symmRef false uplo 1.5 A B 0.5 C) && outside X == outside (ldAt L C)
+
+#guard [Uplo.lower, .upper].all fun u => symmMatchesLd 1024 7 6 u && symmMatchesLd 520 7 6 u
 
 -- `α = 0` only scales `C`, without reading `A` or `B`, nor `C` when `β = 0`.
 #guard

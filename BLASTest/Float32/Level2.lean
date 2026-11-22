@@ -305,7 +305,7 @@ def trsvTMatches (n : Nat) (uplo : Uplo) (d : Diag) : Bool :=
 
 #guard [Uplo.lower, .upper].all fun u => [Diag.unit, .nonUnit].all fun d =>
   trsvTMatches 5 u d && trsvTMatches 1 u d && trsvTMatches 0 u d && trsvTMatches 40 u d &&
-    trsvTMatches 80 u d
+    trsvTMatches 80 u d && trsvTMatches 6 u d && trsvTMatches 7 u d && trsvTMatches 11 u d
 
 /-- The residual `Aᵀ * y - x` of a solve, by `gemvT`: zero up to rounding. -/
 def trsvTResidual (n : Nat) (uplo : Uplo) : Float32 :=
@@ -405,7 +405,8 @@ def trmvMatches (t : Bool) (n : Nat) (uplo : Uplo) (d : Diag) : Bool :=
 #guard [false, true].all fun t => [Uplo.lower, .upper].all fun u =>
   [Diag.unit, .nonUnit].all fun d =>
     trmvMatches t 5 u d && trmvMatches t 1 u d && trmvMatches t 0 u d &&
-      trmvMatches t 40 u d && trmvMatches t 300 u d
+      trmvMatches t 40 u d && trmvMatches t 300 u d && trmvMatches t 6 u d &&
+      trmvMatches t 7 u d && trmvMatches t 11 u d
 
 /-- `trsv` undoes `trmv`, and `trsvT` undoes `trmvT`, up to rounding. -/
 def trmvResidual (n : Nat) (uplo : Uplo) : Float32 :=
@@ -488,7 +489,8 @@ def symvMatches (n : Nat) (uplo : Uplo) (α β : Float32) : Bool :=
 #guard [Uplo.lower, .upper].all fun u =>
   symvMatches 5 u 1.5 0.5 && symvMatches 1 u 2 0 && symvMatches 0 u 1 1 &&
     symvMatches 40 u (-0.25) 1 && symvMatches 300 u (1 / 7) (-2) && symvMatches 17 u 0 0.5 &&
-    symvMatches 17 u 0 0 && symvMatches 17 u 1 0
+    symvMatches 17 u 0 0 && symvMatches 17 u 1 0 && symvMatches 6 u 1.5 0.5 &&
+    symvMatches 7 u (-0.25) 1 && symvMatches 11 u (1 / 7) (-2)
 
 /-- `symv` on the two triangles of a symmetric matrix agrees with `gemv`, up to rounding. -/
 def symvResidual (n : Nat) : Float32 :=

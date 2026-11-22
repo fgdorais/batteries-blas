@@ -22,9 +22,11 @@ Changes that would reorder them, such as partial sums in `dot`, `asum` and `nrm2
 
 ## Transposed `gemm`
 
-- [ ] `gemmTN`, `gemmTT`: compute two columns of `C` per pass over four columns of `A`, so that
-  each pass reads `A` once for two columns of `B`. They run at about 7.5 GFLOP/s at 256–1024, half
-  of `gemm`, since each column of `C` reads all of `A`. Each sum keeps its order. Not measured yet.
+- [x] `gemmTN`, `gemmTT`: compute four rows of two columns of `C` per pass over four columns of
+  `A` and two of `B`, with eight sums, so that each pass reads `A` once for two columns of `B`.
+  Each sum keeps its order. About 1.15–1.4× locally (7.4–9.5 GFLOP/s at 256–1024, from 6.4–7.2).
+  A Lean recursion with eight `Float` arguments and an eight-variable `inplace` loop measured the
+  same.
 
 ## `gemmtr`
 
@@ -58,9 +60,15 @@ Changes that would reorder them, such as partial sums in `dot`, `asum` and `nrm2
   256–1024), one column at a time.
 - [x] `trmmT`: four columns at a time, which share the reads of `A`, each with its dot products in
   their order. About 2–3× locally (6–8 GFLOP/s at 256–1024, near `trsm`).
-- [ ] `symm`, `symmRight`: as `trmm` and `trmmRight`, four columns of `C` at a time, or four added
-  columns of `B` per pass over the rows of a column of `C`. Each element keeps its order of
-  operations. They run at 5.4–7.8 GFLOP/s at 256–1024, one column at a time. Not measured yet.
+- [x] `symm`: four columns of `B` and `C` at a time, which share the reads of `A`, each element with
+  its operations in their order. About 1.1–1.4× locally (6.2–7.7 GFLOP/s at 256–1024, from
+  5.4–6.1).
+- [ ] `symm`: check the four-column pass at power-of-two leading dimensions on several CPUs. It
+  streams nine columns at once, and on one AMD EPYC 9V74 run (8-way L1) it ran at 2.8 GFLOP/s at
+  512 and 1024, against 5.9 at 256. Three columns (seven streams) would stay within 8 ways.
+- [ ] `symmRight`: four added columns of `B` per pass over the rows of a column of `C`, as `gemv`
+  adds four columns. Each element keeps its order of operations. It runs at 5.4–7.8 GFLOP/s at
+  256–1024, one column at a time.
 - [ ] `syr2k`: two columns at a time, as `syrk` does, with each column's skipped terms kept. It runs
   at 5.2–7.3 GFLOP/s at 256–1024, one column at a time.
 - [ ] `trsm`, `trsmRight`: update the rest of `B` by the `gemm` kernel after each block of solved
@@ -77,13 +85,16 @@ Changes that would reorder them, such as partial sums in `dot`, `asum` and `nrm2
 
 ## Level 2 (0.9–1.3× at 1024 and 2048, 1.2–1.8× at 256)
 
-- [ ] `trmvT`, like `trsvT` below: it runs at about 1.5–2× the time of `trmv`, which runs at the
-  speed of `trsv`. Each element is a dot product of a column with `x`, so four columns at a time
-  share the reads of `x`, each with its terms in their order. Not measured yet.
-- [ ] `trsvT`: compute four elements at a time, as `gemvT` computes four dot products, with each
-  element's terms in their order: the next three elements depend only on the terms solved so far,
-  except for a 4 × 4 triangle at the end. It runs at 3.2–4.5 GFLOP/s at 256–2048, about half of
-  `trsv`. Not measured yet.
+- [x] `trmvT`: four elements per pass, which share the reads of `x`, each with its terms in their
+  order (the terms of the four elements' own rows first). At the speed of `trsv` locally
+  (5–6.5 GFLOP/s at 256–2048, from 3–3.7).
+- [x] `trsvT`: four elements per pass, as `gemvT` computes four dot products, with each element's
+  terms in their order: the four share the solved range, then finish their 4 × 4 triangle. About
+  1.5–2× locally (5–6.3 GFLOP/s at 256–2048, near `trsv`, from 3.2–4.5).
+
+- [x] `symv`: four columns per sweep, each `y[i]` with the four column terms in column order and
+  four dot products, then the 4 × 4 block in the order of the reference. About 1.65× locally
+  (8.7–10 GFLOP/s at 256–2048, from 5.1–6.2).
 
 - [ ] `trsv`: update the rest of `x` four columns at a time after each block of four solved
   elements, as `gemv` does. Each element keeps its order of operations. Not measured yet.
