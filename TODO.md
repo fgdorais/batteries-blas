@@ -84,6 +84,10 @@ Changes that would reorder them, such as partial sums in `dot`, `asum` and `nrm2
   terms in their order: the four share the solved range, then finish their 4 × 4 triangle. About
   1.5–2× locally (5–6.3 GFLOP/s at 256–2048, near `trsv`, from 3.2–4.5).
 
+- [x] `symv`: four columns per sweep, each `y[i]` with the four column terms in column order and
+  four dot products, then the 4 × 4 block in the order of the reference. About 1.65× locally
+  (8.7–10 GFLOP/s at 256–2048, from 5.1–6.2).
+
 - [ ] `trsv`: update the rest of `x` four columns at a time after each block of four solved
   elements, as `gemv` does. Each element keeps its order of operations. Not measured yet.
 - [ ] `gemv` with strided `x` and `y` is 1.05–3× behind, and 2.4–7.4× behind in `Float32`, where
