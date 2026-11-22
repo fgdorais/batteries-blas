@@ -488,7 +488,8 @@ def symvMatches (n : Nat) (uplo : Uplo) (α β : Float) : Bool :=
 #guard [Uplo.lower, .upper].all fun u =>
   symvMatches 5 u 1.5 0.5 && symvMatches 1 u 2 0 && symvMatches 0 u 1 1 &&
     symvMatches 40 u (-0.25) 1 && symvMatches 300 u (1 / 7) (-2) && symvMatches 17 u 0 0.5 &&
-    symvMatches 17 u 0 0 && symvMatches 17 u 1 0
+    symvMatches 17 u 0 0 && symvMatches 17 u 1 0 && symvMatches 6 u 1.5 0.5 &&
+    symvMatches 7 u (-0.25) 1 && symvMatches 11 u (1 / 7) (-2)
 
 /-- `symv` on the two triangles of a symmetric matrix agrees with `gemv`, up to rounding. -/
 def symvResidual (n : Nat) : Float :=
