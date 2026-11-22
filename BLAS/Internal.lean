@@ -768,4 +768,19 @@ private theorem toNat_rev_succ_add {n : Nat} (hn : n < USize.size) {kk l : USize
   · grind
   · lia
 
+/-- The indices of two different elements of a vector are different. -/
+private theorem idx_ne_of_ne {off inc n i j : Nat} (hc : 0 < inc ∨ n ≤ 1) (hi : i < n)
+    (hj : j < n) (h : i ≠ j) : off + inc * i ≠ off + inc * j := by
+  intro e
+  rcases hc with hc | hc
+  · exact h (Nat.eq_of_mul_eq_mul_left hc (Nat.add_left_cancel e))
+  · lia
+
+/-- A fold over `h + m` steps is the fold of the first `h`, then of the `m` others. -/
+private theorem fold_split {α : Type} (h m N : Nat) (F : Nat → α → α) (hN : N = h + m)
+    (init : α) :
+    Nat.fold N (fun t _ s => F t s) init =
+      Nat.fold m (fun t _ s => F (h + t) s) (Nat.fold h (fun t _ s => F t s) init) := by
+  subst hN; rw [Nat.fold_add]
+
 end BLAS

@@ -115,6 +115,16 @@ public theorem size_iterRange (F : Nat → Float32Array → Float32Array)
   iterRange_invariant (fun b : Float32Array => b.size = a.size)
     (fun j _ _ b hb => (hF j b).trans hb) rfl
 
+/-- The passes of four steps each are the steps, one at a time. -/
+public theorem iterRange_four {α : Type u} (F : Nat → α → α) (Q : Nat) (c : α) :
+    iterRange (fun q c => iterRange F (4 * q) (4 * q + 4) c) 0 Q c = iterRange F 0 (4 * Q) c := by
+  induction Q with
+  | zero => simp
+  | succ Q ih =>
+    rw [iterRange_succ _ (Nat.zero_le _), ih,
+      iterRange_split F (lo := 0) (mid := 4 * Q) (hi := 4 * (Q + 1)) (by lia) (by lia)]
+    rfl
+
 /-- An element that no step changes is unchanged. -/
 public theorem getElem!_iterRange_of_frame (F : Nat → Float32Array → Float32Array) (q : Nat)
     {lo hi : Nat} (hF : ∀ j, lo ≤ j → j < hi → ∀ a, (F j a)[q]! = a[q]!) (a : Float32Array) :
@@ -170,6 +180,13 @@ public theorem getElem!_set!_of_lt (a : Float32Array) (i : Nat) (v : Float32) {q
     (hq : q < a.size) : (a.set! i v)[q]! = if i = q then v else a[q]! := by
   rw [getElem!_pos (a.set! i v) q (by simpa using hq), getElem!_pos a q hq,
     Float32Array.getElem_set!]
+
+/-- Setting an element leaves the others unchanged. -/
+public theorem getElem!_set!_ne (b : Float32Array) {p q : Nat} (v : Float32) (h : p ≠ q) :
+    (b.set! p v)[q]! = b[q]! := by
+  by_cases hq : q < b.size
+  · rw [getElem!_set!_of_lt _ _ _ hq, ite_eq_right h]
+  · rw [getElem!_neg _ _ (by simpa using hq), getElem!_neg b _ hq]
 
 /--
 A step that writes `G i a[off + i]!` at `off + i` and `G' i a[off' + i]!` at `off' + i`, for each
@@ -771,5 +788,63 @@ public theorem run_forIn4From_read {N : Nat} {γ : Type} (lo hi j₀ : USize)
       iterRange_of_lt _ (show j₀.toNat < hi.toNat by lia) i₁,
       iterRange_of_lt _ (show j₀.toNat < hi.toNat by lia) i₂,
       iterRange_of_lt _ (show j₀.toNat < hi.toNat by lia) i₃, e]
+
+/--
+Runs a loop of the `inplace` notation with four `Float32` variables whose step `j` maps the
+variables by `f₀ j` to `f₃ j`, which don't read the array, and the array by `F j`.
+-/
+public theorem run_forIn4From_modify {N : Nat} {γ : Type} (lo hi j₀ : USize)
+    (hlo : lo.toNat ≤ j₀.toNat) (i₀ i₁ i₂ i₃ : Float32)
+    (body : (j : USize) → lo.toNat ≤ j.toNat → j.toNat < hi.toNat →
+      (Float32 → Float32 → Float32 → Float32 → InPlace.Tail N γ) →
+        Float32 → Float32 → Float32 → Float32 → InPlace.Tail N γ)
+    (k : Float32 → Float32 → Float32 → Float32 → InPlace.Tail N γ)
+    (f₀ f₁ f₂ f₃ : Nat → Float32 → Float32) (F : Nat → Float32Array → Float32Array)
+    (hF : ∀ j a, (F j a).size = a.size)
+    (a : Float32Array) (h : a.size = N)
+    (hbody : ∀ j hl hj next s₀ s₁ s₂ s₃ (a : Float32Array) (h : a.size = N),
+      (body j hl hj next s₀ s₁ s₂ s₃).run a h =
+        (next (f₀ j.toNat s₀) (f₁ j.toNat s₁) (f₂ j.toNat s₂) (f₃ j.toNat s₃)).run
+          (F j.toNat a) ((hF _ _).trans h)) :
+    (InPlace.Tail.forIn4From lo hi j₀ hlo i₀ i₁ i₂ i₃ body k).run a h =
+      (k (ScalarArray.iterRange f₀ j₀.toNat hi.toNat i₀)
+        (ScalarArray.iterRange f₁ j₀.toNat hi.toNat i₁)
+        (ScalarArray.iterRange f₂ j₀.toNat hi.toNat i₂)
+        (ScalarArray.iterRange f₃ j₀.toNat hi.toNat i₃)).run
+        (ScalarArray.iterRange F j₀.toNat hi.toNat a) ((size_iterRange F hF _ _ a).trans h) := by
+  obtain ⟨d, hd⟩ : ∃ d, hi.toNat - j₀.toNat = d := ⟨_, rfl⟩
+  induction d generalizing j₀ i₀ i₁ i₂ i₃ a with
+  | zero =>
+    rw [InPlace.Tail.forIn4From_eq, dite_eq_right (by rw [USize.lt_iff_toNat_lt]; lia)]
+    simp only [iterRange_of_le _ (show hi.toNat ≤ j₀.toNat by lia)]
+  | succ d ih =>
+    have hj : j₀ < hi := by rw [USize.lt_iff_toNat_lt]; lia
+    have e : (j₀ + 1).toNat = j₀.toNat + 1 := by grind
+    rw [InPlace.Tail.forIn4From_eq, dite_eq_left hj, hbody j₀ hlo hj, ih _ _ _ _ _ _ _ _ (by lia)]
+    simp only [iterRange_of_lt _ (show j₀.toNat < hi.toNat by lia), e]
+
+/--
+Four steps that each set one element to a value that reads none of the elements the steps before
+them set: the four values read the array before the steps.
+-/
+public theorem iterRange_set!_four (p : Nat → Nat) (V : Nat → Float32Array → Float32) (k : Nat)
+    (hV : ∀ r, r < 4 → ∀ c c' : Float32Array,
+      (∀ q, (∀ r', r' < r → p (k + r') ≠ q) → c[q]! = c'[q]!) → V (k + r) c = V (k + r) c')
+    (b : Float32Array) :
+    iterRange (fun k b => b.set! (p k) (V k b)) k (k + 4) b =
+      (((b.set! (p k) (V k b)).set! (p (k + 1)) (V (k + 1) b)).set! (p (k + 2))
+        (V (k + 2) b)).set! (p (k + 3)) (V (k + 3) b) := by
+  rw [iterRange_of_lt _ (by lia), iterRange_of_lt _ (by lia), iterRange_of_lt _ (by lia),
+    iterRange_of_lt _ (by lia), iterRange_of_le _ (by lia)]
+  have e₁ := hV 1 (by lia) (b.set! (p k) (V k b)) b fun q hq =>
+    getElem!_set!_ne _ _ (by simpa using hq 0 (by lia))
+  have e₂ := hV 2 (by lia) ((b.set! (p k) (V k b)).set! (p (k + 1)) (V (k + 1) b)) b fun q hq => by
+    rw [getElem!_set!_ne _ _ (hq 1 (by lia)),
+      getElem!_set!_ne _ _ (by simpa using hq 0 (by lia))]
+  have e₃ := hV 3 (by lia) (((b.set! (p k) (V k b)).set! (p (k + 1)) (V (k + 1) b)).set!
+      (p (k + 2)) (V (k + 2) b)) b fun q hq => by
+    rw [getElem!_set!_ne _ _ (hq 2 (by lia)), getElem!_set!_ne _ _ (hq 1 (by lia)),
+      getElem!_set!_ne _ _ (by simpa using hq 0 (by lia))]
+  rw [e₁, e₂, e₃]
 
 end BLAS.Float32

@@ -1059,17 +1059,6 @@ public def trsmRightTColData (d : Diag) (A : Mat n n) (up : Bool) (bo bl j cnt :
       have p : (cj + i).toNat < b.size := by grind
       b[cj + i] := b[cj + i] / ajj).2
 
-/-- The passes of four columns are the passes of the columns, one at a time. -/
-private theorem iterRange_four (F : Nat → Float32Array → Float32Array) (Q : Nat)
-    (c : Float32Array) :
-    iterRange (fun q c => iterRange F (4 * q) (4 * q + 4) c) 0 Q c = iterRange F 0 (4 * Q) c := by
-  induction Q with
-  | zero => simp
-  | succ Q ih =>
-    rw [iterRange_succ _ (Nat.zero_le _), ih,
-      iterRange_split F (lo := 0) (mid := 4 * Q) (hi := 4 * (Q + 1)) (by lia) (by lia)]
-    rfl
-
 public theorem trsmRightTColData_eq (d : Diag) (A : Mat n n) (up : Bool) (bo bl j cnt : Nat)
     (b : Float32Array) (hj : j < n) (hcnt : cnt ≤ n) (hk : ∀ t, t < cnt → subColIdx n up t < n)
     (hkj : ∀ t, t < cnt → subColIdx n up t ≠ j) (hml : m ≤ bl)
