@@ -102,7 +102,117 @@ theorem iterRange_fst (g : Nat → Float32Array → Float32 → Float32) (k : Na
     A.data[A.off + A.ld * j + j]!
   b.modifyAt x.stride.idx j (j + 1) fun _ _ => t
 
-/-- The array of the upper solve. -/
+/-!
+### Four elements per pass
+
+The steps of both solves have one shape: step `k` solves element `π k` from the elements `π t`,
+`t < k`, solved before it, where `π k = k` for the upper triangle and `π k = n - 1 - k` for the
+lower one. Four consecutive steps share the terms of the elements solved before the first of them,
+so they can compute those four dot products together, then finish each element in order.
+-/
+
+/-- The value of the step `k` of a solve in the order `π`, on the array `b`. -/
+private def solveVal (d : Diag) (A : Mat n n) (x : Vec n) (π : Nat → Nat) (k : Nat)
+    (b : Float32Array) : Float32 :=
+  d.apply (Nat.fold k (fun t _ s =>
+      s - A.data[A.off + A.ld * π k + π t]! * b[x.off + x.inc * π t]!) b[x.off + x.inc * π k]!)
+    A.data[A.off + A.ld * π k + π k]!
+
+/-- The dot product of the step `k + r` over the steps before `k`, on the array `b`. -/
+private def solvePre (A : Mat n n) (x : Vec n) (π : Nat → Nat) (k r : Nat) (b : Float32Array) :
+    Float32 :=
+  Nat.fold k (fun t _ s => s - A.data[A.off + A.ld * π (k + r) + π t]! * b[x.off + x.inc * π t]!)
+    b[x.off + x.inc * π (k + r)]!
+
+/--
+Four steps of a solve in the order `π` from `k`: the four dot products over the elements of the
+steps before `k`, then the solve of each element with the terms of the elements of the four solved
+before it.
+-/
+private theorem iterRange_solve_four (d : Diag) (A : Mat n n) (x : Vec n) (π : Nat → Nat)
+    (hπ : ∀ k, k < n → π k < n) (hinj : ∀ k k', k < n → k' < n → k ≠ k' → π k ≠ π k')
+    {k : Nat} (hk : k + 3 < n) (b : Float32Array) (hb : b.size = x.data.size) :
+    iterRange (fun k b => b.set! (x.off + x.inc * π k) (solveVal d A x π k b)) k (k + 4) b =
+      let w := fun k t => A.data[A.off + A.ld * π k + π t]!
+      let D := fun k v => d.apply v A.data[A.off + A.ld * π k + π k]!
+      let y₀ := D k (solvePre A x π k 0 b)
+      let y₁ := D (k + 1) (solvePre A x π k 1 b - w (k + 1) k * y₀)
+      let y₂ := D (k + 2) ((solvePre A x π k 2 b - w (k + 2) k * y₀) - w (k + 2) (k + 1) * y₁)
+      let y₃ := D (k + 3) (((solvePre A x π k 3 b - w (k + 3) k * y₀) -
+        w (k + 3) (k + 1) * y₁) - w (k + 3) (k + 2) * y₂)
+      (((b.set! (x.off + x.inc * π k) y₀).set! (x.off + x.inc * π (k + 1)) y₁).set!
+        (x.off + x.inc * π (k + 2)) y₂).set! (x.off + x.inc * π (k + 3)) y₃ := by
+  rw [iterRange_of_lt _ (by lia), iterRange_of_lt _ (by lia), iterRange_of_lt _ (by lia),
+    iterRange_of_lt _ (by lia), iterRange_of_le _ (by lia)]
+  have rd : ∀ (c : Float32Array) (q t : Nat) (v : Float32), t < n → q < n → t ≠ q →
+      (c.set! (x.off + x.inc * π q) v)[x.off + x.inc * π t]! = c[x.off + x.inc * π t]! :=
+    fun c q t v ht hq h =>
+      getElem!_set!_ne c v (idx_ne_of_ne x.inc_pos (hπ q hq) (hπ t ht) (hinj q t hq ht (Ne.symm h)))
+  have rs : ∀ (c : Float32Array) (q : Nat) (v : Float32), q < n → c.size = x.data.size →
+      (c.set! (x.off + x.inc * π q) v)[x.off + x.inc * π q]! = v :=
+    fun c q v hq h => by
+      rw [getElem!_set!_of_lt _ _ _ (by simpa [h] using x.index_lt (hπ q hq)), ite_eq_left rfl]
+  have pre : ∀ (r : Nat) (c : Float32Array),
+      (∀ t, t < k → c[x.off + x.inc * π t]! = b[x.off + x.inc * π t]!) →
+      c[x.off + x.inc * π (k + r)]! = b[x.off + x.inc * π (k + r)]! →
+      Nat.fold k (fun t _ s =>
+          s - A.data[A.off + A.ld * π (k + r) + π t]! * c[x.off + x.inc * π t]!)
+        c[x.off + x.inc * π (k + r)]! = solvePre A x π k r b := by
+    intro r c hc hr
+    rw [solvePre, hr]
+    congr 1
+    funext t ht s
+    rw [hc t ht]
+  have v₀ : solveVal d A x π k b = d.apply (solvePre A x π k 0 b)
+      A.data[A.off + A.ld * π k + π k]! := rfl
+  simp only [v₀]
+  generalize d.apply (solvePre A x π k 0 b) A.data[A.off + A.ld * π k + π k]! = y₀
+  have v₁ : solveVal d A x π (k + 1) (b.set! (x.off + x.inc * π k) y₀) =
+      d.apply (solvePre A x π k 1 b - A.data[A.off + A.ld * π (k + 1) + π k]! * y₀)
+        A.data[A.off + A.ld * π (k + 1) + π (k + 1)]! := by
+    rw [solveVal, Nat.fold_succ, pre 1 _ (fun t ht => by simp (disch := lia) only [rd])
+      (by simp (disch := lia) only [rd])]
+    simp (disch := first | lia | simp [hb]) only [rs]
+  rw [v₁]
+  generalize d.apply (solvePre A x π k 1 b - A.data[A.off + A.ld * π (k + 1) + π k]! * y₀)
+      A.data[A.off + A.ld * π (k + 1) + π (k + 1)]! = y₁
+  have v₂ : solveVal d A x π (k + 2)
+        ((b.set! (x.off + x.inc * π k) y₀).set! (x.off + x.inc * π (k + 1)) y₁) =
+      d.apply ((solvePre A x π k 2 b - A.data[A.off + A.ld * π (k + 2) + π k]! * y₀) -
+          A.data[A.off + A.ld * π (k + 2) + π (k + 1)]! * y₁)
+        A.data[A.off + A.ld * π (k + 2) + π (k + 2)]! := by
+    rw [solveVal, show k + 2 = k + 1 + 1 by lia, Nat.fold_succ, Nat.fold_succ,
+      show k + 1 + 1 = k + 2 by lia]
+    rw [pre 2 _ (fun t ht => by simp (disch := lia) only [rd])
+      (by simp (disch := lia) only [rd])]
+    simp (disch := first | lia | simp [hb]) only [rd, rs]
+  rw [v₂]
+  generalize d.apply ((solvePre A x π k 2 b - A.data[A.off + A.ld * π (k + 2) + π k]! * y₀) -
+      A.data[A.off + A.ld * π (k + 2) + π (k + 1)]! * y₁)
+    A.data[A.off + A.ld * π (k + 2) + π (k + 2)]! = y₂
+  have v₃ : solveVal d A x π (k + 3)
+        (((b.set! (x.off + x.inc * π k) y₀).set! (x.off + x.inc * π (k + 1)) y₁).set!
+          (x.off + x.inc * π (k + 2)) y₂) =
+      d.apply (((solvePre A x π k 3 b - A.data[A.off + A.ld * π (k + 3) + π k]! * y₀) -
+          A.data[A.off + A.ld * π (k + 3) + π (k + 1)]! * y₁) -
+          A.data[A.off + A.ld * π (k + 3) + π (k + 2)]! * y₂)
+        A.data[A.off + A.ld * π (k + 3) + π (k + 3)]! := by
+    rw [solveVal, show k + 3 = k + 2 + 1 by lia, Nat.fold_succ, show k + 2 = k + 1 + 1 by lia,
+      Nat.fold_succ, Nat.fold_succ, show k + 1 + 1 = k + 2 by lia,
+      show k + 2 + 1 = k + 3 by lia]
+    rw [pre 3 _ (fun t ht => by simp (disch := lia) only [rd])
+      (by simp (disch := lia) only [rd])]
+    simp (disch := first | lia | simp [hb]) only [rd, rs]
+  rw [v₃]
+
+private theorem trsvTUpperStep_eq_solve (d : Diag) (A : Mat n n) (x : Vec n) :
+    trsvTUpperStep d A x =
+      fun k b => b.set! (x.off + x.inc * k) (solveVal d A x (fun k => k) k b) := by
+  funext k b
+  rw [trsvTUpperStep, modifyAt_of_lt _ _ (Nat.lt_succ_self k), modifyAt_self, Vec.idx_stride]
+  rfl
+
+/-- The array of the upper solve: four elements per pass, then the rest one at a time. -/
 public def trsvTUpperData (d : Diag) (A : Mat n n) (x : Vec n) : Float32Array :=
   if hs : A.data.size < USize.size ∧ x.data.size < USize.size then
     let nu := n.toUSize
@@ -112,8 +222,47 @@ public def trsvTUpperData (d : Diag) (A : Mat n n) (x : Vec n) : Float32Array :=
     let c := x.inc.toUSize
     let ao := A.off.toUSize
     let al := A.ld.toUSize
+    let q4 := nu / 4
+    have hq4 : q4.toNat = n / 4 := by simp only [q4, USize.toNat_div, hnu]; simp
     (inplace a do
-      for j in 0...nu do
+      for g in 0...q4 do
+        have e₀ : (4 * g).toNat = 4 * g.toNat := by grind
+        have e₁ : (4 * g + 1).toNat = 4 * g.toNat + 1 := by grind
+        have e₂ : (4 * g + 2).toNat = 4 * g.toNat + 2 := by grind
+        have e₃ : (4 * g + 3).toNat = 4 * g.toNat + 3 := by grind
+        have k₀ : (o + c * (4 * g)).toNat < a.size := x.toNat_index_lt hs.2 (by lia)
+        have k₁ : (o + c * (4 * g + 1)).toNat < a.size := x.toNat_index_lt hs.2 (by lia)
+        have k₂ : (o + c * (4 * g + 2)).toNat < a.size := x.toNat_index_lt hs.2 (by lia)
+        have k₃ : (o + c * (4 * g + 3)).toNat < a.size := x.toNat_index_lt hs.2 (by lia)
+        let v₀ := a[o + c * (4 * g)]
+        let v₁ := a[o + c * (4 * g + 1)]
+        let v₂ := a[o + c * (4 * g + 2)]
+        let v₃ := a[o + c * (4 * g + 3)]
+        for i in 0...4 * g with (s₀ := v₀) (s₁ := v₁) (s₂ := v₂) (s₃ := v₃) do
+          have hi : (o + c * i).toNat < a.size := x.toNat_index_lt hs.2 (by lia)
+          let y := a[o + c * i]
+          s₀ := s₀ - A.uget ao al rfl rfl hs.1 i (4 * g) (by lia) (by lia) * y
+          s₁ := s₁ - A.uget ao al rfl rfl hs.1 i (4 * g + 1) (by lia) (by lia) * y
+          s₂ := s₂ - A.uget ao al rfl rfl hs.1 i (4 * g + 2) (by lia) (by lia) * y
+          s₃ := s₃ - A.uget ao al rfl rfl hs.1 i (4 * g + 3) (by lia) (by lia) * y
+        let y₀ := d.apply s₀ (A.uget ao al rfl rfl hs.1 (4 * g) (4 * g) (by lia) (by lia))
+        a[o + c * (4 * g)] := y₀
+        let y₁ := d.apply
+          (s₁ - A.uget ao al rfl rfl hs.1 (4 * g) (4 * g + 1) (by lia) (by lia) * y₀)
+          (A.uget ao al rfl rfl hs.1 (4 * g + 1) (4 * g + 1) (by lia) (by lia))
+        a[o + c * (4 * g + 1)] := y₁
+        let y₂ := d.apply ((s₂ -
+            A.uget ao al rfl rfl hs.1 (4 * g) (4 * g + 2) (by lia) (by lia) * y₀) -
+            A.uget ao al rfl rfl hs.1 (4 * g + 1) (4 * g + 2) (by lia) (by lia) * y₁)
+          (A.uget ao al rfl rfl hs.1 (4 * g + 2) (4 * g + 2) (by lia) (by lia))
+        a[o + c * (4 * g + 2)] := y₂
+        let y₃ := d.apply (((s₃ -
+            A.uget ao al rfl rfl hs.1 (4 * g) (4 * g + 3) (by lia) (by lia) * y₀) -
+            A.uget ao al rfl rfl hs.1 (4 * g + 1) (4 * g + 3) (by lia) (by lia) * y₁) -
+            A.uget ao al rfl rfl hs.1 (4 * g + 2) (4 * g + 3) (by lia) (by lia) * y₂)
+          (A.uget ao al rfl rfl hs.1 (4 * g + 3) (4 * g + 3) (by lia) (by lia))
+        a[o + c * (4 * g + 3)] := y₃
+      for j in 4 * q4...nu do
         have hk : (o + c * j).toNat < a.size := x.toNat_index_lt hs.2 (by lia)
         let v := a[o + c * j]
         for i in 0...j with (t := v) do
@@ -128,31 +277,74 @@ public theorem trsvTUpperData_eq_iterRange (d : Diag) (A : Mat n n) (x : Vec n) 
   split
   · rename_i hs
     have hnu := x.toNat_toUSize hs.2
+    have hq4 : (n.toUSize / 4).toNat = n / 4 := by simp only [USize.toNat_div, hnu]; simp
+    have h4q : (4 * (n.toUSize / 4)).toNat = 4 * (n / 4) := by grind
+    have hF : ∀ j (b : Float32Array), (trsvTUpperStep d A x j b).size = b.size :=
+      fun _ _ => size_modifyAt _ _ _ _ _
     simp only [runInPlaceThenOf_eq, Tail.forIn_eq]
-    rw [Tail.run_forInFrom_unit (F := trsvTUpperStep d A x)
-      (hF := fun _ _ => size_modifyAt _ _ _ _ _)]
-    · simp only [Tail.run_done, USize.toNat_zero, hnu]
-    · intro j _ hj next a h
-      rw [hnu] at hj
-      simp only [Tail.run_readThen]
-      rw [Tail.run_forInFrom (f := fun i p =>
-          (p.1 - A.data[A.off + A.ld * j.toNat + i]! * p.2[x.off + x.inc * i]!, p.2))
-        (hf := fun _ _ => rfl)]
-      · simp only [USize.toNat_zero, Tail.run_writeThen, iterRange_fst (fun i a s =>
-          s - A.data[A.off + A.ld * j.toNat + i]! * a[x.off + x.inc * i]!)]
-        congr 1
-        have hp := x.toNat_index hs.2 hj
-        rw [trsvTUpperStep,
-          ← set_eq_modifyAt _ _ _ _ (by rw [Vec.idx_stride, h]; exact x.index_lt hj)]
-        simp only [hp, Vec.idx_stride, uget_eq_getElem, getElem_def,
-          getElem!_pos a (x.off + x.inc * j.toNat) (show _ < a.size by rw [h]; exact x.index_lt hj),
-          getElem!_pos A.data (A.off + A.ld * j.toNat + j.toNat) (A.index_lt hj hj)]
-      · intro i _ hi next' b a' h'
-        simp only [Tail.run_readThen, uget_eq_getElem, getElem_def]
-        have hp := x.toNat_index hs.2 (Nat.lt_trans hi hj)
-        simp only [hp, getElem!_pos a' (x.off + x.inc * i.toNat)
-            (show _ < a'.size by rw [h']; exact x.index_lt (by lia)),
-          getElem!_pos A.data (A.off + A.ld * j.toNat + i.toNat) (A.index_lt (by lia) hj)]
+    rw [Tail.run_forInFrom_unit
+      (F := fun g b => iterRange (trsvTUpperStep d A x) (4 * g) (4 * g + 4) b)
+      (hF := fun _ _ => size_iterRange _ hF _ _ _)]
+    · rw [Tail.run_forInFrom_unit (F := trsvTUpperStep d A x) (hF := hF)]
+      · simp only [Tail.run_done, hq4, h4q, hnu, USize.toNat_zero]
+        rw [iterRange_four, ← iterRange_split _ (Nat.zero_le _) (by lia)]
+      · intro j hl hj next a h
+        rw [hnu] at hj
+        rw [h4q] at hl
+        simp only [Tail.run_readThen]
+        rw [Tail.run_forInFrom (f := fun i p =>
+            (p.1 - A.data[A.off + A.ld * j.toNat + i]! * p.2[x.off + x.inc * i]!, p.2))
+          (hf := fun _ _ => rfl)]
+        · simp only [USize.toNat_zero, Tail.run_writeThen, iterRange_fst (fun i a s =>
+            s - A.data[A.off + A.ld * j.toNat + i]! * a[x.off + x.inc * i]!)]
+          congr 1
+          have hp := x.toNat_index hs.2 hj
+          rw [trsvTUpperStep,
+            ← set_eq_modifyAt _ _ _ _ (by rw [Vec.idx_stride, h]; exact x.index_lt hj)]
+          simp only [hp, Vec.idx_stride, uget_eq_getElem, getElem_def,
+            getElem!_pos a (x.off + x.inc * j.toNat)
+              (show _ < a.size by rw [h]; exact x.index_lt hj),
+            getElem!_pos A.data (A.off + A.ld * j.toNat + j.toNat) (A.index_lt hj hj)]
+        · intro i _ hi next' b a' h'
+          simp only [Tail.run_readThen, uget_eq_getElem, getElem_def]
+          have hp := x.toNat_index hs.2 (Nat.lt_trans hi hj)
+          simp only [hp, getElem!_pos a' (x.off + x.inc * i.toNat)
+              (show _ < a'.size by rw [h']; exact x.index_lt (by lia)),
+            getElem!_pos A.data (A.off + A.ld * j.toNat + i.toNat) (A.index_lt (by lia) hj)]
+    · intro g _ hg next a h
+      rw [hq4] at hg
+      have e₀ : (4 * g).toNat = 4 * g.toNat := by grind
+      have e₁ : (4 * g + 1).toNat = 4 * g.toNat + 1 := by grind
+      have e₂ : (4 * g + 2).toNat = 4 * g.toNat + 2 := by grind
+      have e₃ : (4 * g + 3).toNat = 4 * g.toNat + 3 := by grind
+      have t₀ := x.toNat_index hs.2 (i := 4 * g) (by lia)
+      have t₁ := x.toNat_index hs.2 (i := 4 * g + 1) (by lia)
+      have t₂ := x.toNat_index hs.2 (i := 4 * g + 2) (by lia)
+      have t₃ := x.toNat_index hs.2 (i := 4 * g + 3) (by lia)
+      rw [e₀] at t₀
+      rw [e₁] at t₁
+      rw [e₂] at t₂
+      rw [e₃] at t₃
+      have hb : a.size = x.data.size := h
+      simp only [Tail.run_readThen, Tail.forIn4_eq]
+      rw [run_forIn4From_read
+        (f₀ := fun i s => s - A.data[A.off + A.ld * (4 * g.toNat) + i]! * a[x.off + x.inc * i]!)
+        (f₁ := fun i s => s - A.data[A.off + A.ld * (4 * g.toNat + 1) + i]! *
+          a[x.off + x.inc * i]!)
+        (f₂ := fun i s => s - A.data[A.off + A.ld * (4 * g.toNat + 2) + i]! *
+          a[x.off + x.inc * i]!)
+        (f₃ := fun i s => s - A.data[A.off + A.ld * (4 * g.toNat + 3) + i]! *
+          a[x.off + x.inc * i]!)]
+      · simp only [Tail.run_writeThen, USize.toNat_zero, e₀, iterRange_eq_fold]
+        apply run_congr
+        rw [trsvTUpperStep_eq_solve, iterRange_solve_four d A x (fun k => k) (fun _ h => h)
+          (fun _ _ _ _ h => h) (by lia) a hb]
+        simp only [solvePre, t₀, t₁, t₂, t₃, set_eq_set!, getElem_eq_getElem!,
+          uget_eq_getElem, getElem_def, e₀, e₁, e₂, e₃, Nat.add_zero]
+      · intro i _ hi next' s₀ s₁ s₂ s₃
+        have hp := x.toNat_index hs.2 (i := i) (by lia)
+        simp only [Tail.run_readThen, hp, getElem_eq_getElem!, uget_eq_getElem, getElem_def, e₀,
+          e₁, e₂, e₃]
   · rfl
 
 /-- After the steps `i < j`, the elements `i < j` are solved, and the others are unchanged. -/
@@ -215,7 +407,15 @@ The step `k` of the lower solve: solve for element `j = n - 1 - k` from the elem
       b[x.off + x.inc * j]!) A.data[A.off + A.ld * j + j]!
   b.modifyAt x.stride.idx j (j + 1) fun _ _ => t
 
-/-- The array of the lower solve. -/
+private theorem trsvTLowerStep_eq_solve (d : Diag) (A : Mat n n) (x : Vec n) :
+    trsvTLowerStep d A x =
+      fun k b =>
+        b.set! (x.off + x.inc * (n - 1 - k)) (solveVal d A x (fun k => n - 1 - k) k b) := by
+  funext k b
+  rw [trsvTLowerStep, modifyAt_of_lt _ _ (Nat.lt_succ_self _), modifyAt_self, Vec.idx_stride]
+  rfl
+
+/-- The array of the lower solve: four elements per pass, then the rest one at a time. -/
 public def trsvTLowerData (d : Diag) (A : Mat n n) (x : Vec n) : Float32Array :=
   if hs : A.data.size < USize.size ∧ x.data.size < USize.size then
     let nu := n.toUSize
@@ -225,8 +425,60 @@ public def trsvTLowerData (d : Diag) (A : Mat n n) (x : Vec n) : Float32Array :=
     let c := x.inc.toUSize
     let ao := A.off.toUSize
     let al := A.ld.toUSize
+    let q4 := nu / 4
+    have hq4 : q4.toNat = n / 4 := by simp only [q4, USize.toNat_div, hnu]; simp
     (inplace a do
-      for k in 0...nu do
+      for g in 0...q4 do
+        have j₀ : (nu - 1 - 4 * g).toNat = n - 1 - 4 * g.toNat := by grind
+        have j₁ : (nu - 1 - (4 * g + 1)).toNat = n - 1 - (4 * g.toNat + 1) := by grind
+        have j₂ : (nu - 1 - (4 * g + 2)).toNat = n - 1 - (4 * g.toNat + 2) := by grind
+        have j₃ : (nu - 1 - (4 * g + 3)).toNat = n - 1 - (4 * g.toNat + 3) := by grind
+        have k₀ : (o + c * (nu - 1 - 4 * g)).toNat < a.size := x.toNat_index_lt hs.2 (by lia)
+        have k₁ : (o + c * (nu - 1 - (4 * g + 1))).toNat < a.size :=
+          x.toNat_index_lt hs.2 (by lia)
+        have k₂ : (o + c * (nu - 1 - (4 * g + 2))).toNat < a.size :=
+          x.toNat_index_lt hs.2 (by lia)
+        have k₃ : (o + c * (nu - 1 - (4 * g + 3))).toNat < a.size :=
+          x.toNat_index_lt hs.2 (by lia)
+        let v₀ := a[o + c * (nu - 1 - 4 * g)]
+        let v₁ := a[o + c * (nu - 1 - (4 * g + 1))]
+        let v₂ := a[o + c * (nu - 1 - (4 * g + 2))]
+        let v₃ := a[o + c * (nu - 1 - (4 * g + 3))]
+        for t in 0...4 * g with (s₀ := v₀) (s₁ := v₁) (s₂ := v₂) (s₃ := v₃) do
+          have ht : (nu - 1 - t).toNat < n := by grind
+          have hi : (o + c * (nu - 1 - t)).toNat < a.size := x.toNat_index_lt hs.2 ht
+          let y := a[o + c * (nu - 1 - t)]
+          s₀ := s₀ - A.uget ao al rfl rfl hs.1 (nu - 1 - t) (nu - 1 - 4 * g) ht (by lia) * y
+          s₁ := s₁ - A.uget ao al rfl rfl hs.1 (nu - 1 - t) (nu - 1 - (4 * g + 1)) ht (by lia) * y
+          s₂ := s₂ - A.uget ao al rfl rfl hs.1 (nu - 1 - t) (nu - 1 - (4 * g + 2)) ht (by lia) * y
+          s₃ := s₃ - A.uget ao al rfl rfl hs.1 (nu - 1 - t) (nu - 1 - (4 * g + 3)) ht (by lia) * y
+        let y₀ := d.apply s₀
+          (A.uget ao al rfl rfl hs.1 (nu - 1 - 4 * g) (nu - 1 - 4 * g) (by lia) (by lia))
+        a[o + c * (nu - 1 - 4 * g)] := y₀
+        let y₁ := d.apply (s₁ - A.uget ao al rfl rfl hs.1 (nu - 1 - 4 * g) (nu - 1 - (4 * g + 1))
+            (by lia) (by lia) * y₀)
+          (A.uget ao al rfl rfl hs.1 (nu - 1 - (4 * g + 1)) (nu - 1 - (4 * g + 1)) (by lia)
+            (by lia))
+        a[o + c * (nu - 1 - (4 * g + 1))] := y₁
+        let y₂ := d.apply ((s₂ -
+            A.uget ao al rfl rfl hs.1 (nu - 1 - 4 * g) (nu - 1 - (4 * g + 2)) (by lia) (by lia) *
+              y₀) -
+            A.uget ao al rfl rfl hs.1 (nu - 1 - (4 * g + 1)) (nu - 1 - (4 * g + 2)) (by lia)
+              (by lia) * y₁)
+          (A.uget ao al rfl rfl hs.1 (nu - 1 - (4 * g + 2)) (nu - 1 - (4 * g + 2)) (by lia)
+            (by lia))
+        a[o + c * (nu - 1 - (4 * g + 2))] := y₂
+        let y₃ := d.apply (((s₃ -
+            A.uget ao al rfl rfl hs.1 (nu - 1 - 4 * g) (nu - 1 - (4 * g + 3)) (by lia) (by lia) *
+              y₀) -
+            A.uget ao al rfl rfl hs.1 (nu - 1 - (4 * g + 1)) (nu - 1 - (4 * g + 3)) (by lia)
+              (by lia) * y₁) -
+            A.uget ao al rfl rfl hs.1 (nu - 1 - (4 * g + 2)) (nu - 1 - (4 * g + 3)) (by lia)
+              (by lia) * y₂)
+          (A.uget ao al rfl rfl hs.1 (nu - 1 - (4 * g + 3)) (nu - 1 - (4 * g + 3)) (by lia)
+            (by lia))
+        a[o + c * (nu - 1 - (4 * g + 3))] := y₃
+      for k in 4 * q4...nu do
         have hj : (nu - 1 - k).toNat = n - 1 - k.toNat := by grind
         have hjn : (nu - 1 - k).toNat < n := by lia
         have hk : (o + c * (nu - 1 - k)).toNat < a.size := x.toNat_index_lt hs.2 hjn
@@ -246,42 +498,89 @@ public theorem trsvTLowerData_eq_iterRange (d : Diag) (A : Mat n n) (x : Vec n) 
   split
   · rename_i hs
     have hnu := x.toNat_toUSize hs.2
+    have hq4 : (n.toUSize / 4).toNat = n / 4 := by simp only [USize.toNat_div, hnu]; simp
+    have h4q : (4 * (n.toUSize / 4)).toNat = 4 * (n / 4) := by grind
+    have hF : ∀ j (b : Float32Array), (trsvTLowerStep d A x j b).size = b.size :=
+      fun _ _ => size_modifyAt _ _ _ _ _
     simp only [runInPlaceThenOf_eq, Tail.forIn_eq]
-    rw [Tail.run_forInFrom_unit (F := trsvTLowerStep d A x)
-      (hF := fun _ _ => size_modifyAt _ _ _ _ _)]
-    · simp only [Tail.run_done, USize.toNat_zero, hnu]
-    · intro k _ hk next a h
-      rw [hnu] at hk
-      have hj : (n.toUSize - 1 - k).toNat = n - 1 - k.toNat := by grind
-      simp only [Tail.run_readThen]
-      rw [Tail.run_forInFrom (f := fun t p =>
-          (p.1 - A.data[A.off + A.ld * (n - 1 - k.toNat) + (n - 1 - t)]! *
-            p.2[x.off + x.inc * (n - 1 - t)]!, p.2))
-        (hf := fun _ _ => rfl)]
-      · simp only [USize.toNat_zero, Tail.run_writeThen, iterRange_fst (fun t a s =>
-          s - A.data[A.off + A.ld * (n - 1 - k.toNat) + (n - 1 - t)]! *
-            a[x.off + x.inc * (n - 1 - t)]!)]
-        congr 1
-        have hp : (x.off.toUSize + x.inc.toUSize * (n.toUSize - 1 - k)).toNat =
-            x.off + x.inc * (n - 1 - k.toNat) := by
-          rw [x.toNat_index hs.2 (by lia), hj]
-        rw [trsvTLowerStep, ← set_eq_modifyAt _ _ _ _
-          (by rw [Vec.idx_stride, h]; exact x.index_lt (by lia))]
-        simp only [hp, hj, Vec.idx_stride, uget_eq_getElem, getElem_def,
-          getElem!_pos a (x.off + x.inc * (n - 1 - k.toNat))
-            (show _ < a.size by rw [h]; exact x.index_lt (by lia)),
-          getElem!_pos A.data (A.off + A.ld * (n - 1 - k.toNat) + (n - 1 - k.toNat))
-            (A.index_lt (by lia) (by lia))]
-      · intro t _ ht next' b a' h'
-        simp only [Tail.run_readThen, uget_eq_getElem, getElem_def]
+    rw [Tail.run_forInFrom_unit
+      (F := fun g b => iterRange (trsvTLowerStep d A x) (4 * g) (4 * g + 4) b)
+      (hF := fun _ _ => size_iterRange _ hF _ _ _)]
+    · rw [Tail.run_forInFrom_unit (F := trsvTLowerStep d A x) (hF := hF)]
+      · simp only [Tail.run_done, hq4, h4q, hnu, USize.toNat_zero]
+        rw [iterRange_four, ← iterRange_split _ (Nat.zero_le _) (by lia)]
+      · intro k hl hk next a h
+        rw [hnu] at hk
+        have hj : (n.toUSize - 1 - k).toNat = n - 1 - k.toNat := by grind
+        simp only [Tail.run_readThen]
+        rw [Tail.run_forInFrom (f := fun t p =>
+            (p.1 - A.data[A.off + A.ld * (n - 1 - k.toNat) + (n - 1 - t)]! *
+              p.2[x.off + x.inc * (n - 1 - t)]!, p.2))
+          (hf := fun _ _ => rfl)]
+        · simp only [USize.toNat_zero, Tail.run_writeThen, iterRange_fst (fun t a s =>
+            s - A.data[A.off + A.ld * (n - 1 - k.toNat) + (n - 1 - t)]! *
+              a[x.off + x.inc * (n - 1 - t)]!)]
+          congr 1
+          have hp : (x.off.toUSize + x.inc.toUSize * (n.toUSize - 1 - k)).toNat =
+              x.off + x.inc * (n - 1 - k.toNat) := by
+            rw [x.toNat_index hs.2 (by lia), hj]
+          rw [trsvTLowerStep, ← set_eq_modifyAt _ _ _ _
+            (by rw [Vec.idx_stride, h]; exact x.index_lt (by lia))]
+          simp only [hp, hj, Vec.idx_stride, uget_eq_getElem, getElem_def,
+            getElem!_pos a (x.off + x.inc * (n - 1 - k.toNat))
+              (show _ < a.size by rw [h]; exact x.index_lt (by lia)),
+            getElem!_pos A.data (A.off + A.ld * (n - 1 - k.toNat) + (n - 1 - k.toNat))
+              (A.index_lt (by lia) (by lia))]
+        · intro t _ ht next' b a' h'
+          simp only [Tail.run_readThen, uget_eq_getElem, getElem_def]
+          have hi : (n.toUSize - 1 - t).toNat = n - 1 - t.toNat := by grind
+          have hp : (x.off.toUSize + x.inc.toUSize * (n.toUSize - 1 - t)).toNat =
+              x.off + x.inc * (n - 1 - t.toNat) := by
+            rw [x.toNat_index hs.2 (by lia), hi]
+          simp only [hp, hi, hj, getElem!_pos a' (x.off + x.inc * (n - 1 - t.toNat))
+              (show _ < a'.size by rw [h']; exact x.index_lt (by lia)),
+            getElem!_pos A.data (A.off + A.ld * (n - 1 - k.toNat) + (n - 1 - t.toNat))
+              (A.index_lt (by lia) (by lia))]
+    · intro g _ hg next a h
+      rw [hq4] at hg
+      have e₀ : (4 * g).toNat = 4 * g.toNat := by grind
+      have hg4 : 4 * g.toNat + 3 < n := by lia
+      have hn : n < USize.size := Nat.lt_of_le_of_lt x.le_size hs.2
+      have j₀ : (n.toUSize - 1 - 4 * g).toNat = n - 1 - 4 * g.toNat := by grind
+      have j₁ : (n.toUSize - 1 - (4 * g + 1)).toNat = n - 1 - (4 * g.toNat + 1) := by grind
+      have j₂ : (n.toUSize - 1 - (4 * g + 2)).toNat = n - 1 - (4 * g.toNat + 2) := by grind
+      have j₃ : (n.toUSize - 1 - (4 * g + 3)).toNat = n - 1 - (4 * g.toNat + 3) := by grind
+      have t₀ := x.toNat_index hs.2 (i := n.toUSize - 1 - 4 * g) (by lia)
+      have t₁ := x.toNat_index hs.2 (i := n.toUSize - 1 - (4 * g + 1)) (by lia)
+      have t₂ := x.toNat_index hs.2 (i := n.toUSize - 1 - (4 * g + 2)) (by lia)
+      have t₃ := x.toNat_index hs.2 (i := n.toUSize - 1 - (4 * g + 3)) (by lia)
+      rw [j₀] at t₀
+      rw [j₁] at t₁
+      rw [j₂] at t₂
+      rw [j₃] at t₃
+      have hb : a.size = x.data.size := h
+      simp only [Tail.run_readThen, Tail.forIn4_eq]
+      rw [run_forIn4From_read
+        (f₀ := fun t s => s - A.data[A.off + A.ld * (n - 1 - 4 * g.toNat) + (n - 1 - t)]! *
+          a[x.off + x.inc * (n - 1 - t)]!)
+        (f₁ := fun t s => s - A.data[A.off + A.ld * (n - 1 - (4 * g.toNat + 1)) + (n - 1 - t)]! *
+          a[x.off + x.inc * (n - 1 - t)]!)
+        (f₂ := fun t s => s - A.data[A.off + A.ld * (n - 1 - (4 * g.toNat + 2)) + (n - 1 - t)]! *
+          a[x.off + x.inc * (n - 1 - t)]!)
+        (f₃ := fun t s => s - A.data[A.off + A.ld * (n - 1 - (4 * g.toNat + 3)) + (n - 1 - t)]! *
+          a[x.off + x.inc * (n - 1 - t)]!)]
+      · simp only [Tail.run_writeThen, USize.toNat_zero, e₀, iterRange_eq_fold]
+        apply run_congr
+        rw [trsvTLowerStep_eq_solve, iterRange_solve_four d A x (fun k => n - 1 - k)
+          (fun _ _ => by lia) (fun _ _ _ _ h => by lia) (by lia) a hb]
+        simp only [solvePre, t₀, t₁, t₂, t₃, set_eq_set!, getElem_eq_getElem!,
+          uget_eq_getElem, getElem_def, j₀, j₁, j₂, j₃, Nat.add_zero]
+      · intro t _ ht next' s₀ s₁ s₂ s₃
         have hi : (n.toUSize - 1 - t).toNat = n - 1 - t.toNat := by grind
-        have hp : (x.off.toUSize + x.inc.toUSize * (n.toUSize - 1 - t)).toNat =
-            x.off + x.inc * (n - 1 - t.toNat) := by
-          rw [x.toNat_index hs.2 (by lia), hi]
-        simp only [hp, hi, hj, getElem!_pos a' (x.off + x.inc * (n - 1 - t.toNat))
-            (show _ < a'.size by rw [h']; exact x.index_lt (by lia)),
-          getElem!_pos A.data (A.off + A.ld * (n - 1 - k.toNat) + (n - 1 - t.toNat))
-            (A.index_lt (by lia) (by lia))]
+        have hp := x.toNat_index hs.2 (i := n.toUSize - 1 - t) (by lia)
+        rw [hi] at hp
+        simp only [Tail.run_readThen, hp, hi, getElem_eq_getElem!, uget_eq_getElem, getElem_def,
+          j₀, j₁, j₂, j₃]
   · rfl
 
 /--

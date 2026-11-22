@@ -894,7 +894,8 @@ def symmMatches (m n : Nat) (uplo : Uplo) (α β : Float) : Bool :=
 #guard [Uplo.lower, .upper].all fun u =>
   symmMatches 5 3 u 1.5 0.5 && symmMatches 1 1 u 2 0 && symmMatches 17 9 u (-0.25) 1 &&
     symmMatches 40 33 u 1 (1 / 7) && symmMatches 0 3 u 1 1 && symmMatches 3 0 u 1 1 &&
-    symmMatches 6 4 u (1 / 3) 0 && symmMatches 9 12 u 0.7 (-2)
+    symmMatches 6 4 u (1 / 3) 0 && symmMatches 9 12 u 0.7 (-2) && symmMatches 7 5 u 1.5 0.5 &&
+    symmMatches 11 6 u (-0.25) 1 && symmMatches 10 7 u (1 / 7) (-2)
 
 -- `α = 0` only scales `C`, without reading `A` or `B`, nor `C` when `β = 0`.
 #guard
