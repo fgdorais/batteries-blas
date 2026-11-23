@@ -133,7 +133,7 @@ public def tpsvUpperData (d : Diag) (ap : Vec (n * (n + 1) / 2)) (x : Vec n) : F
     let c := x.inc.toUSize
     let po := ap.off.toUSize
     let pc := ap.inc.toUSize
-    (inplace a do
+    inplace a do
       for kk in 0...nu do
         have hj : (nu - 1 - kk).toNat = n - 1 - kk.toNat := by grind
         have hjn : (nu - 1 - kk).toNat < n := by lia
@@ -147,7 +147,7 @@ public def tpsvUpperData (d : Diag) (ap : Vec (n * (n + 1) / 2)) (x : Vec n) : F
           have hq' : (o + c * l).toNat < a.size :=
             x.toNat_index_lt hs.2 (Nat.lt_trans (by assumption) hjn)
           a[o + c * l] := a[o + c * l] -
-            s * ap.uget po pc rfl rfl hs.1 (packedUp (nu - 1 - kk) + l) (hp.1 ▸ hp.2)).2
+            s * ap.uget po pc rfl rfl hs.1 (packedUp (nu - 1 - kk) + l) (hp.1 ▸ hp.2)
   else iterRange (tpsvUpperStep d ap x) 0 n x.data
 
 public theorem tpsvUpperData_eq_iterRange (d : Diag) (ap : Vec (n * (n + 1) / 2)) (x : Vec n) :
@@ -281,7 +281,7 @@ public def tpsvLowerData (d : Diag) (ap : Vec (n * (n + 1) / 2)) (x : Vec n) : F
     let c := x.inc.toUSize
     let po := ap.off.toUSize
     let pc := ap.inc.toUSize
-    (inplace a do
+    inplace a do
       for j in 0...nu do
         have hjn : j.toNat < n := by lia
         have hq : (o + c * j).toNat < a.size := x.toNat_index_lt hs.2 hjn
@@ -293,7 +293,7 @@ public def tpsvLowerData (d : Diag) (ap : Vec (n * (n + 1) / 2)) (x : Vec n) : F
           have hi := toNat_bandBelow_add hn' hjn (by assumption)
           have hq' : (o + c * (j + 1 + l)).toNat < a.size := x.toNat_index_lt hs.2 (hi.1 ▸ hi.2)
           a[o + c * (j + 1 + l)] := a[o + c * (j + 1 + l)] -
-            s * ap.uget po pc rfl rfl hs.1 (packedLo n j + (1 + l)) (hp.1 ▸ hp.2)).2
+            s * ap.uget po pc rfl rfl hs.1 (packedLo n j + (1 + l)) (hp.1 ▸ hp.2)
   else iterRange (tpsvLowerStep d ap x) 0 n x.data
 
 public theorem tpsvLowerData_eq_iterRange (d : Diag) (ap : Vec (n * (n + 1) / 2)) (x : Vec n) :
@@ -425,7 +425,7 @@ public def tpsvTUpperData (d : Diag) (ap : Vec (n * (n + 1) / 2)) (x : Vec n) : 
     let c := x.inc.toUSize
     let po := ap.off.toUSize
     let pc := ap.inc.toUSize
-    (inplace a do
+    inplace a do
       for j in 0...nu do
         have hjn : j.toNat < n := by lia
         have hq : (o + c * j).toNat < a.size := x.toNat_index_lt hs.2 hjn
@@ -436,7 +436,7 @@ public def tpsvTUpperData (d : Diag) (ap : Vec (n * (n + 1) / 2)) (x : Vec n) : 
             x.toNat_index_lt hs.2 (Nat.lt_trans (by assumption) hjn)
           s := s - ap.uget po pc rfl rfl hs.1 (packedUp j + t) (hp.1 ▸ hp.2) * a[o + c * t]
         have hd := toNat_packedUp_add hn hjn (l := j) (Nat.le_refl _)
-        a[o + c * j] := d.apply s (ap.uget po pc rfl rfl hs.1 (packedUp j + j) (hd.1 ▸ hd.2))).2
+        a[o + c * j] := d.apply s (ap.uget po pc rfl rfl hs.1 (packedUp j + j) (hd.1 ▸ hd.2))
   else iterRange (tpsvTUpperStep d ap x) 0 n x.data
 
 public theorem tpsvTUpperData_eq_iterRange (d : Diag) (ap : Vec (n * (n + 1) / 2)) (x : Vec n) :
@@ -535,7 +535,7 @@ public def tpsvTLowerData (d : Diag) (ap : Vec (n * (n + 1) / 2)) (x : Vec n) : 
     let c := x.inc.toUSize
     let po := ap.off.toUSize
     let pc := ap.inc.toUSize
-    (inplace a do
+    inplace a do
       for kk in 0...nu do
         have hkk : kk.toNat < n := by lia
         have hjn : (nu - 1 - kk).toNat < n := by grind
@@ -551,7 +551,7 @@ public def tpsvTLowerData (d : Diag) (ap : Vec (n * (n + 1) / 2)) (x : Vec n) : 
             a[o + c * (nu - 1 - kk + cnt - t)]
         have hd := toNat_packedLo hn hjn
         a[o + c * (nu - 1 - kk)] :=
-          d.apply s (ap.uget po pc rfl rfl hs.1 (packedLo n (nu - 1 - kk)) (hd.1 ▸ hd.2))).2
+          d.apply s (ap.uget po pc rfl rfl hs.1 (packedLo n (nu - 1 - kk)) (hd.1 ▸ hd.2))
   else iterRange (tpsvTLowerStep d ap x) 0 n x.data
 
 public theorem tpsvTLowerData_eq_iterRange (d : Diag) (ap : Vec (n * (n + 1) / 2)) (x : Vec n) :

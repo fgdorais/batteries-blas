@@ -92,7 +92,7 @@ public def sbmvUpperData (k : Nat) (α : Float32) (A : Mat (k + 1) n) (x y : Vec
   let ao := A.off.toUSize
   let al := A.ld.toUSize
   let ku := k.toUSize
-  (inplace c do
+  inplace c do
     for j in 0...nu do
       have hjn : j.toNat < n := by lia
       have hku : ku.toNat = k := toNat_toUSize_of_lt (by
@@ -111,7 +111,7 @@ public def sbmvUpperData (k : Nat) (α : Float32) (A : Mat (k + 1) n) (x y : Vec
         s := s + aij * x.uget xo xc rfl rfl hs.2.1 (lo + l) hi
       have hq : (o + cc * j).toNat < c.size := hc ▸ ho ▸ hcc ▸ y.toNat_index_lt hs.2.2 hjn
       c[o + cc * j] :=
-        c[o + cc * j] + t * A.uget ao al rfl rfl hs.1 ku j (by lia) hjn + α * s).2
+        c[o + cc * j] + t * A.uget ao al rfl rfl hs.1 ku j (by lia) hjn + α * s
 
 public theorem sbmvUpperData_eq_iterRange (k : Nat) (α : Float32) (A : Mat (k + 1) n) (x y : Vec n)
     (hs : A.data.size < USize.size ∧ x.data.size < USize.size ∧ y.data.size < USize.size)
@@ -256,7 +256,7 @@ public def sbmvLowerData (k : Nat) (α : Float32) (A : Mat (k + 1) n) (x y : Vec
   let xc := x.inc.toUSize
   let ao := A.off.toUSize
   let al := A.ld.toUSize
-  (inplace c do
+  inplace c do
     for j in 0...nu do
       have hjn : j.toNat < n := by lia
       let t := α * x.uget xo xc rfl rfl hs.2.1 j hjn
@@ -271,7 +271,7 @@ public def sbmvLowerData (k : Nat) (α : Float32) (A : Mat (k + 1) n) (x y : Vec
         let aij := A.uget ao al rfl rfl hs.1 (1 + l) j (hr.1 ▸ hr.2) hjn
         c[o + cc * (j + 1 + l)] := c[o + cc * (j + 1 + l)] + t * aij
         s := s + aij * x.uget xo xc rfl rfl hs.2.1 (j + 1 + l) hi
-      c[o + cc * j] := d + α * s).2
+      c[o + cc * j] := d + α * s
 
 public theorem sbmvLowerData_eq_iterRange (k : Nat) (α : Float32) (A : Mat (k + 1) n) (x y : Vec n)
     (hs : A.data.size < USize.size ∧ x.data.size < USize.size ∧ y.data.size < USize.size)

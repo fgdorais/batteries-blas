@@ -72,12 +72,12 @@ public def scalBetaData (β : Float32) (C : Mat m n) : Float32Array :=
     let a := C.data
     let co := C.off.toUSize
     let cl := C.ld.toUSize
-    (inplace a do
+    inplace a do
       for j in 0...nu do
         let cj := co + cl * j
         for i in 0...mu do
           have hk : (cj + 1 * i).toNat < a.size := C.toNat_col_index_lt hs.1 (by lia) (by lia)
-          a[cj + 1 * i] := betaMul β a[cj + 1 * i]).2
+          a[cj + 1 * i] := betaMul β a[cj + 1 * i]
   else mapMat C.data C.off C.ld m 0 n fun _ _ v => betaMul β v
 
 public theorem scalBetaData_eq (β : Float32) (C : Mat m n) :

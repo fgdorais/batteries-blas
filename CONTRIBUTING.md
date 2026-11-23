@@ -82,9 +82,9 @@ don't put them under `BLAS/Float32/`, whose untemplated files the script removes
   (Reference-LAPACK `master`), with its special cases. A faster kernel must keep that order and be
   proved equal to the specification; a change that would reorder the operations, such as partial
   sums in `dot`, is not taken.
-- Kernels are written with scalar-arrays' `inplace … do` notation, whose loops carry at most four
-  variables. Nested `inplace` loops more than two deep recurse on the stack, so split them into
-  separate functions.
+- Kernels are written with scalar-arrays' `inplace … do` notation, whose loops carry at most eight
+  variables. A program that doesn't `return` gives the new array. Nested `inplace` loops more
+  than two deep recurse on the stack, so split them into separate functions.
 - Kernels fall back to the specification when the array is too large for `USize` indices, so that
   the specifications need no size hypotheses.
 - The library has no dependencies besides lean4-scalar-arrays, pinned to an exact release, and no

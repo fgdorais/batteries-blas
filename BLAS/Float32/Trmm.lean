@@ -81,7 +81,7 @@ public def trmvTUpperAscData (d : Diag) (A : Mat n n) (x : Vec n) : Float32Array
     let c := x.inc.toUSize
     let ao := A.off.toUSize
     let al := A.ld.toUSize
-    (inplace a do
+    inplace a do
       for k in 0...nu do
         have hj : (nu - 1 - k).toNat = n - 1 - k.toNat := by grind
         have hjn : (nu - 1 - k).toNat < n := by lia
@@ -92,7 +92,7 @@ public def trmvTUpperAscData (d : Diag) (A : Mat n n) (x : Vec n) : Float32Array
           have hi : t.toNat < n := by grind
           have hk' : (o + c * t).toNat < a.size := x.toNat_index_lt hs.2 hi
           s := s + A.uget ao al rfl rfl hs.1 t (nu - 1 - k) hi hjn * a[o + c * t]
-        a[o + c * (nu - 1 - k)] := s).2
+        a[o + c * (nu - 1 - k)] := s
   else iterRange (trmvTUpperAscStep d A x) 0 n x.data
 
 public theorem trmvTUpperAscData_eq_iterRange (d : Diag) (A : Mat n n) (x : Vec n) :
@@ -598,7 +598,7 @@ public def trmmTUpper4Data (d : Diag) (A : Mat m m) (o₀ o₁ o₂ o₃ : Nat) 
   have e₃ : c₃.toNat = o₃ := by grind
   let ao := A.off.toUSize
   let al := A.ld.toUSize
-  (inplace b do
+  inplace b do
     for k in 0...mu do
       have hj : (mu - 1 - k).toNat = m - 1 - k.toNat := by grind
       have hjn : (mu - 1 - k).toNat < m := by lia
@@ -626,7 +626,7 @@ public def trmmTUpper4Data (d : Diag) (A : Mat m m) (o₀ o₁ o₂ o₃ : Nat) 
       b[c₀ + (mu - 1 - k)] := s₀
       b[c₁ + (mu - 1 - k)] := s₁
       b[c₂ + (mu - 1 - k)] := s₂
-      b[c₃ + (mu - 1 - k)] := s₃).2
+      b[c₃ + (mu - 1 - k)] := s₃
 
 public theorem trmmTUpper4Data_eq (d : Diag) (A : Mat m m) (o₀ o₁ o₂ o₃ : Nat) (b : Float32Array)
     (h₁ : o₀ + m ≤ o₁) (h₂ : o₁ + m ≤ o₂) (h₃ : o₂ + m ≤ o₃) (h₄ : o₃ + m ≤ b.size)
@@ -704,7 +704,7 @@ public def trmmTLower4Data (d : Diag) (A : Mat m m) (o₀ o₁ o₂ o₃ : Nat) 
   have e₃ : c₃.toNat = o₃ := by grind
   let ao := A.off.toUSize
   let al := A.ld.toUSize
-  (inplace b do
+  inplace b do
     for j in 0...mu do
       have q₀ : (c₀ + j).toNat < b.size := by grind
       have q₁ : (c₁ + j).toNat < b.size := by grind
@@ -730,7 +730,7 @@ public def trmmTLower4Data (d : Diag) (A : Mat m m) (o₀ o₁ o₂ o₃ : Nat) 
       b[c₀ + j] := s₀
       b[c₁ + j] := s₁
       b[c₂ + j] := s₂
-      b[c₃ + j] := s₃).2
+      b[c₃ + j] := s₃
 
 public theorem trmmTLower4Data_eq (d : Diag) (A : Mat m m) (o₀ o₁ o₂ o₃ : Nat) (b : Float32Array)
     (h₁ : o₀ + m ≤ o₁) (h₂ : o₁ + m ≤ o₂) (h₃ : o₂ + m ≤ o₃) (h₄ : o₃ + m ≤ b.size)

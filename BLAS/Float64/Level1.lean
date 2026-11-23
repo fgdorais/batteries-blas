@@ -76,10 +76,10 @@ public def axpyData (α : Float) (x y : Vec n) : Float64Array :=
     let c := y.inc.toUSize
     let xo := x.off.toUSize
     let xc := x.inc.toUSize
-    (inplace a do
+    inplace a do
       for k in 0...nu do
         have hk : (o + c * k).toNat < a.size := y.toNat_index_lt hs.2 (by lia)
-        a[o + c * k] := α * x.uget xo xc rfl rfl hs.1 k (by lia) + a[o + c * k]).2
+        a[o + c * k] := α * x.uget xo xc rfl rfl hs.1 k (by lia) + a[o + c * k]
   else y.data.modifyAt y.stride.idx 0 n fun i v => α * x.data[x.off + x.inc * i]! + v
 
 public theorem axpyData_eq (α : Float) (x y : Vec n) :
@@ -140,10 +140,10 @@ public def scalData (α : Float) (x : Vec n) : Float64Array :=
     let a := x.data
     let o := x.off.toUSize
     let c := x.inc.toUSize
-    (inplace a do
+    inplace a do
       for k in 0...nu do
         have hk : (o + c * k).toNat < a.size := x.toNat_index_lt hs (by lia)
-        a[o + c * k] := α * a[o + c * k]).2
+        a[o + c * k] := α * a[o + c * k]
   else x.data.modifyAt x.stride.idx 0 n fun _ v => α * v
 
 public theorem scalData_eq (α : Float) (x : Vec n) :
@@ -193,10 +193,10 @@ public def scalBetaData (β : Float) (x : Vec n) : Float64Array :=
     let a := x.data
     let o := x.off.toUSize
     let c := x.inc.toUSize
-    (inplace a do
+    inplace a do
       for k in 0...nu do
         have hk : (o + c * k).toNat < a.size := x.toNat_index_lt hs (by lia)
-        a[o + c * k] := betaMul β a[o + c * k]).2
+        a[o + c * k] := betaMul β a[o + c * k]
   else x.data.modifyAt x.stride.idx 0 n fun _ v => betaMul β v
 
 public theorem scalBetaData_eq (β : Float) (x : Vec n) :
@@ -223,10 +223,10 @@ public def axpbyZeroData (α : Float) (x y : Vec n) : Float64Array :=
     let c := y.inc.toUSize
     let xo := x.off.toUSize
     let xc := x.inc.toUSize
-    (inplace a do
+    inplace a do
       for k in 0...nu do
         have hk : (o + c * k).toNat < a.size := y.toNat_index_lt hs.2 (by lia)
-        a[o + c * k] := α * x.uget xo xc rfl rfl hs.1 k (by lia)).2
+        a[o + c * k] := α * x.uget xo xc rfl rfl hs.1 k (by lia)
   else y.data.modifyAt y.stride.idx 0 n fun i _ => α * x.data[x.off + x.inc * i]!
 
 public theorem axpbyZeroData_eq (α : Float) (x y : Vec n) :
@@ -255,10 +255,10 @@ public def axpbyData (α : Float) (x : Vec n) (β : Float) (y : Vec n) : Float64
     let c := y.inc.toUSize
     let xo := x.off.toUSize
     let xc := x.inc.toUSize
-    (inplace a do
+    inplace a do
       for k in 0...nu do
         have hk : (o + c * k).toNat < a.size := y.toNat_index_lt hs.2 (by lia)
-        a[o + c * k] := α * x.uget xo xc rfl rfl hs.1 k (by lia) + β * a[o + c * k]).2
+        a[o + c * k] := α * x.uget xo xc rfl rfl hs.1 k (by lia) + β * a[o + c * k]
   else y.data.modifyAt y.stride.idx 0 n fun i v => α * x.data[x.off + x.inc * i]! + β * v
 
 public theorem axpbyData_eq (α : Float) (x : Vec n) (β : Float) (y : Vec n) :
@@ -360,10 +360,10 @@ public def copyData (x y : Vec n) : Float64Array :=
     let c := y.inc.toUSize
     let xo := x.off.toUSize
     let xc := x.inc.toUSize
-    (inplace a do
+    inplace a do
       for k in 0...nu do
         have hk : (o + c * k).toNat < a.size := y.toNat_index_lt hs.2 (by lia)
-        a[o + c * k] := x.uget xo xc rfl rfl hs.1 k (by lia)).2
+        a[o + c * k] := x.uget xo xc rfl rfl hs.1 k (by lia)
   else y.data.modifyAt y.stride.idx 0 n fun i _ => x.data[x.off + x.inc * i]!
 
 public theorem copyData_eq (x y : Vec n) :

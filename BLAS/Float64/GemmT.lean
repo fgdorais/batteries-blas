@@ -52,13 +52,13 @@ public def transposeData (A : Mat m n) : Float64Array :=
     let al := A.ld.toUSize
     let t := replicate (n * m) 0
     have ht : t.size = n * m := by simp [t]
-    (inplace t do
+    inplace t do
       for i in 0...mu do
         let ti := nu * i
         have hti : ti.toNat + nu.toNat ≤ t.size :=
           toNat_mul_add_le (n := m) (by lia) (by rw [hnu, ht]; exact Nat.le_refl _)
         for j in 0...nu do
-          t[ti + j] := A.uget ao al rfl rfl hs.1 i j (by lia) (by lia)).2
+          t[ti + j] := A.uget ao al rfl rfl hs.1 i j (by lia) (by lia)
   else mapMat (replicate (n * m) 0) 0 n n 0 m (transposeAt A)
 
 public theorem transposeData_eq (A : Mat m n) :
@@ -496,14 +496,14 @@ public def gemmTN2Data (α : Float) (A : Mat k m) (B : Mat k n) (β : Float) (j 
   let p := gemmTNSums2 A B ⟨hs.1, hs.2.1⟩ hs.2.2.2.1 hs.2.2.2.2.1 hs.2.2.2.2.2 j hj
   let s₀ := p.1
   let s₁ := p.2
-  (inplace b do
+  inplace b do
     for i in 0...mu do
       have q₀ : (c₀ + i).toNat < b.size := by grind
       have q₁ : (c₁ + i).toNat < b.size := by grind
       let v₀ := b[c₀ + i]
       let v₁ := b[c₁ + i]
       b[c₀ + i] := gemmTVal α β s₀[i.toNat]! v₀
-      b[c₁ + i] := gemmTVal α β s₁[i.toNat]! v₁).2
+      b[c₁ + i] := gemmTVal α β s₁[i.toNat]! v₁
 
 public theorem gemmTN2Data_eq (α : Float) (A : Mat k m) (B : Mat k n) (β : Float) (j : Nat)
     (hj : j + 1 < n) (o₀ o₁ : Nat) (b : Float64Array) (h₁ : o₀ + m ≤ o₁) (h₂ : o₁ + m ≤ b.size)
@@ -557,10 +557,10 @@ public def gemmTN1Data (α : Float) (A : Mat k m) (B : Mat k n) (β : Float) (j 
   let c := o.toUSize
   have e : c.toNat = o := by grind
   let sums := gemmTSums A B ⟨hs.1, hs.2.1⟩ hs.2.2.2.1 hs.2.2.2.2.2 j hj
-  (inplace b do
+  inplace b do
     for i in 0...mu do
       have q : (c + i).toNat < b.size := by grind
-      b[c + i] := gemmTVal α β sums[i.toNat]! b[c + i]).2
+      b[c + i] := gemmTVal α β sums[i.toNat]! b[c + i]
 
 public theorem gemmTN1Data_eq (α : Float) (A : Mat k m) (B : Mat k n) (β : Float) (j : Nat)
     (hj : j < n) (o : Nat) (b : Float64Array) (h : o + m ≤ b.size)
