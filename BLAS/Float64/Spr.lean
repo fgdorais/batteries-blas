@@ -112,7 +112,7 @@ public def sprUpperData (α : Float) (x : Vec n) (ap : Vec (n * (n + 1) / 2)) : 
     let pc := ap.inc.toUSize
     let xo := x.off.toUSize
     let xc := x.inc.toUSize
-    (inplace a do
+    inplace a do
       for j in 0...nu do
         have hjn : j.toNat < n := by lia
         let xj := x.uget xo xc rfl rfl hs.2 j hjn
@@ -127,7 +127,7 @@ public def sprUpperData (α : Float) (x : Vec n) (ap : Vec (n * (n + 1) / 2)) : 
           have hq : (po + pc * (packedUp j + l)).toNat < a.size :=
             ap.toNat_index_lt hs.1 (hp.1 ▸ hp.2)
           a[po + pc * (packedUp j + l)] := a[po + pc * (packedUp j + l)] +
-            x.uget xo xc rfl rfl hs.2 l (Nat.lt_of_le_of_lt hl hjn) * t).2
+            x.uget xo xc rfl rfl hs.2 l (Nat.lt_of_le_of_lt hl hjn) * t
   else iterRange (fun j c => c.modifyAt ap.stride.idx 0 (n * (n + 1) / 2) (sprCol .upper α x j))
     0 n ap.data
 
@@ -143,7 +143,7 @@ public def sprLowerData (α : Float) (x : Vec n) (ap : Vec (n * (n + 1) / 2)) : 
     let pc := ap.inc.toUSize
     let xo := x.off.toUSize
     let xc := x.inc.toUSize
-    (inplace a do
+    inplace a do
       for j in 0...nu do
         have hjn : j.toNat < n := by lia
         let xj := x.uget xo xc rfl rfl hs.2 j hjn
@@ -158,7 +158,7 @@ public def sprLowerData (α : Float) (x : Vec n) (ap : Vec (n * (n + 1) / 2)) : 
           have hq : (po + pc * (packedLo n j + l)).toNat < a.size :=
             ap.toNat_index_lt hs.1 (hp.1 ▸ hp.2)
           a[po + pc * (packedLo n j + l)] := a[po + pc * (packedLo n j + l)] +
-            x.uget xo xc rfl rfl hs.2 (j + l) (hi.1 ▸ hi.2) * t).2
+            x.uget xo xc rfl rfl hs.2 (j + l) (hi.1 ▸ hi.2) * t
   else iterRange (fun j c => c.modifyAt ap.stride.idx 0 (n * (n + 1) / 2) (sprCol .lower α x j))
     0 n ap.data
 
@@ -403,7 +403,7 @@ public def spr2UpperData (α : Float) (x y : Vec n) (ap : Vec (n * (n + 1) / 2))
     let xc := x.inc.toUSize
     let yo := y.off.toUSize
     let yc := y.inc.toUSize
-    (inplace a do
+    inplace a do
       for j in 0...nu do
         have hjn : j.toNat < n := by lia
         let xj := x.uget xo xc rfl rfl hs.2.1 j hjn
@@ -420,7 +420,7 @@ public def spr2UpperData (α : Float) (x y : Vec n) (ap : Vec (n * (n + 1) / 2))
             ap.toNat_index_lt hs.1 (hp.1 ▸ hp.2)
           a[po + pc * (packedUp j + l)] := a[po + pc * (packedUp j + l)] +
             x.uget xo xc rfl rfl hs.2.1 l (Nat.lt_of_le_of_lt hl hjn) * t1 +
-            y.uget yo yc rfl rfl hs.2.2 l (Nat.lt_of_le_of_lt hl hjn) * t2).2
+            y.uget yo yc rfl rfl hs.2.2 l (Nat.lt_of_le_of_lt hl hjn) * t2
   else iterRange (fun j c => c.modifyAt ap.stride.idx 0 (n * (n + 1) / 2) (spr2Col .upper α x y j))
     0 n ap.data
 
@@ -438,7 +438,7 @@ public def spr2LowerData (α : Float) (x y : Vec n) (ap : Vec (n * (n + 1) / 2))
     let xc := x.inc.toUSize
     let yo := y.off.toUSize
     let yc := y.inc.toUSize
-    (inplace a do
+    inplace a do
       for j in 0...nu do
         have hjn : j.toNat < n := by lia
         let xj := x.uget xo xc rfl rfl hs.2.1 j hjn
@@ -456,7 +456,7 @@ public def spr2LowerData (α : Float) (x y : Vec n) (ap : Vec (n * (n + 1) / 2))
             ap.toNat_index_lt hs.1 (hp.1 ▸ hp.2)
           a[po + pc * (packedLo n j + l)] := a[po + pc * (packedLo n j + l)] +
             x.uget xo xc rfl rfl hs.2.1 (j + l) (hi.1 ▸ hi.2) * t1 +
-            y.uget yo yc rfl rfl hs.2.2 (j + l) (hi.1 ▸ hi.2) * t2).2
+            y.uget yo yc rfl rfl hs.2.2 (j + l) (hi.1 ▸ hi.2) * t2
   else iterRange (fun j c => c.modifyAt ap.stride.idx 0 (n * (n + 1) / 2) (spr2Col .lower α x y j))
     0 n ap.data
 

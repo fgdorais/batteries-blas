@@ -108,7 +108,7 @@ public def trmvUpperData (d : Diag) (A : Mat n n) (x : Vec n) : Float32Array :=
     let c := x.inc.toUSize
     let ao := A.off.toUSize
     let al := A.ld.toUSize
-    (inplace a do
+    inplace a do
       for j in 0...nu do
         have hjn : j.toNat < n := by lia
         have hk : (o + c * j).toNat < a.size := x.toNat_index_lt hs.2 hjn
@@ -117,7 +117,7 @@ public def trmvUpperData (d : Diag) (A : Mat n n) (x : Vec n) : Float32Array :=
         for i in 0...j do
           have hi : i.toNat < n := lt_of_lt_of_lt (by assumption) hjn
           have hk' : (o + c * i).toNat < a.size := x.toNat_index_lt hs.2 hi
-          a[o + c * i] := a[o + c * i] + t * A.uget ao al rfl rfl hs.1 i j hi hjn).2
+          a[o + c * i] := a[o + c * i] + t * A.uget ao al rfl rfl hs.1 i j hi hjn
   else iterRange (trmvUpperStep d A x) 0 n x.data
 
 public theorem trmvUpperData_eq_iterRange (d : Diag) (A : Mat n n) (x : Vec n) :
@@ -232,7 +232,7 @@ public def trmvLowerData (d : Diag) (A : Mat n n) (x : Vec n) : Float32Array :=
     let c := x.inc.toUSize
     let ao := A.off.toUSize
     let al := A.ld.toUSize
-    (inplace a do
+    inplace a do
       for k in 0...nu do
         have hj : (nu - 1 - k).toNat = n - 1 - k.toNat := by grind
         have hjn : (nu - 1 - k).toNat < n := by lia
@@ -250,7 +250,7 @@ public def trmvLowerData (d : Diag) (A : Mat n n) (x : Vec n) : Float32Array :=
             exact this
           a[o + c * (nu - 1 - k + 1) + c * i] := a[o + c * (nu - 1 - k + 1) + c * i] +
             t * A.uget ao al rfl rfl hs.1 (nu - 1 - k + 1 + i) (nu - 1 - k)
-              (by grind [-PUnit]) hjn).2
+              (by grind [-PUnit]) hjn
   else iterRange (trmvLowerStep d A x) 0 n x.data
 
 public theorem trmvLowerData_eq_iterRange (d : Diag) (A : Mat n n) (x : Vec n) :
@@ -454,7 +454,7 @@ public def trmvTUpperData (d : Diag) (A : Mat n n) (x : Vec n) : Float32Array :=
     let al := A.ld.toUSize
     let q4 := nu / 4
     have hq4 : q4.toNat = n / 4 := by simp only [q4, USize.toNat_div, hnu]; simp
-    (inplace a do
+    inplace a do
       for g in 0...q4 do
         have hn : n < USize.size := Nat.lt_of_le_of_lt x.le_size hs.2
         have j₀ : (nu - 1 - 4 * g).toNat = n - 1 - 4 * g.toNat := by grind
@@ -515,7 +515,7 @@ public def trmvTUpperData (d : Diag) (A : Mat n n) (x : Vec n) : Float32Array :=
           have hk' : (o + c * (nu - 1 - k - 1 - t)).toNat < a.size := x.toNat_index_lt hs.2 hi
           s := s + A.uget ao al rfl rfl hs.1 (nu - 1 - k - 1 - t) (nu - 1 - k) hi hjn *
             a[o + c * (nu - 1 - k - 1 - t)]
-        a[o + c * (nu - 1 - k)] := s).2
+        a[o + c * (nu - 1 - k)] := s
   else iterRange (trmvTUpperStep d A x) 0 n x.data
 
 public theorem trmvTUpperData_eq_iterRange (d : Diag) (A : Mat n n) (x : Vec n) :
@@ -757,7 +757,7 @@ public def trmvTLowerData (d : Diag) (A : Mat n n) (x : Vec n) : Float32Array :=
     let al := A.ld.toUSize
     let q4 := nu / 4
     have hq4 : q4.toNat = n / 4 := by simp only [q4, USize.toNat_div, hnu]; simp
-    (inplace a do
+    inplace a do
       for g in 0...q4 do
         have hn : n < USize.size := Nat.lt_of_le_of_lt x.le_size hs.2
         have j₀ : (4 * g).toNat = 4 * g.toNat := by grind
@@ -801,7 +801,7 @@ public def trmvTLowerData (d : Diag) (A : Mat n n) (x : Vec n) : Float32Array :=
           have hi : (j + 1 + t).toNat < n := by grind
           have hk' : (o + c * (j + 1 + t)).toNat < a.size := x.toNat_index_lt hs.2 hi
           s := s + A.uget ao al rfl rfl hs.1 (j + 1 + t) j hi hjn * a[o + c * (j + 1 + t)]
-        a[o + c * j] := s).2
+        a[o + c * j] := s
   else iterRange (trmvTLowerStep d A x) 0 n x.data
 
 public theorem trmvTLowerData_eq_iterRange (d : Diag) (A : Mat n n) (x : Vec n) :

@@ -84,7 +84,7 @@ public def spmvUpperData (α : Float) (ap : Vec (n * (n + 1) / 2)) (x y : Vec n)
   let xc := x.inc.toUSize
   let po := ap.off.toUSize
   let pc := ap.inc.toUSize
-  (inplace c do
+  inplace c do
     for j in 0...nu do
       have hjn : j.toNat < n := by lia
       let t := α * x.uget xo xc rfl rfl hs.2.1 j hjn
@@ -98,7 +98,7 @@ public def spmvUpperData (α : Float) (ap : Vec (n * (n + 1) / 2)) (x y : Vec n)
       have hq : (o + cc * j).toNat < c.size := hc ▸ ho ▸ hcc ▸ y.toNat_index_lt hs.2.2 hjn
       have hd := toNat_packedUp_add hn hjn (l := j) (Nat.le_refl _)
       c[o + cc * j] :=
-        c[o + cc * j] + t * ap.uget po pc rfl rfl hs.1 (packedUp j + j) (hd.1 ▸ hd.2) + α * s).2
+        c[o + cc * j] + t * ap.uget po pc rfl rfl hs.1 (packedUp j + j) (hd.1 ▸ hd.2) + α * s
 
 public theorem spmvUpperData_eq_iterRange (α : Float) (ap : Vec (n * (n + 1) / 2)) (x y : Vec n)
     (hs : ap.data.size < USize.size ∧ x.data.size < USize.size ∧ y.data.size < USize.size)
@@ -233,7 +233,7 @@ public def spmvLowerData (α : Float) (ap : Vec (n * (n + 1) / 2)) (x y : Vec n)
   let xc := x.inc.toUSize
   let po := ap.off.toUSize
   let pc := ap.inc.toUSize
-  (inplace c do
+  inplace c do
     for j in 0...nu do
       have hjn : j.toNat < n := by lia
       let t := α * x.uget xo xc rfl rfl hs.2.1 j hjn
@@ -249,7 +249,7 @@ public def spmvLowerData (α : Float) (ap : Vec (n * (n + 1) / 2)) (x y : Vec n)
         let aij := ap.uget po pc rfl rfl hs.1 (packedLo n j + (1 + l)) (hp.1 ▸ hp.2)
         c[o + cc * (j + 1 + l)] := c[o + cc * (j + 1 + l)] + t * aij
         s := s + aij * x.uget xo xc rfl rfl hs.2.1 (j + 1 + l) hi
-      c[o + cc * j] := d + α * s).2
+      c[o + cc * j] := d + α * s
 
 public theorem spmvLowerData_eq_iterRange (α : Float) (ap : Vec (n * (n + 1) / 2)) (x y : Vec n)
     (hs : ap.data.size < USize.size ∧ x.data.size < USize.size ∧ y.data.size < USize.size)

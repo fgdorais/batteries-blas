@@ -281,7 +281,7 @@ public def trsmTUpper4Data (d : Diag) (A : Mat m m) (o₀ o₁ o₂ o₃ : Nat) 
   have e₃ : c₃.toNat = o₃ := by grind
   let ao := A.off.toUSize
   let al := A.ld.toUSize
-  (inplace b do
+  inplace b do
     for j in 0...mu do
       have q₀ : (c₀ + j).toNat < b.size := by grind
       have q₁ : (c₁ + j).toNat < b.size := by grind
@@ -305,7 +305,7 @@ public def trsmTUpper4Data (d : Diag) (A : Mat m m) (o₀ o₁ o₂ o₃ : Nat) 
       b[c₀ + j] := d.apply s₀ ajj
       b[c₁ + j] := d.apply s₁ ajj
       b[c₂ + j] := d.apply s₂ ajj
-      b[c₃ + j] := d.apply s₃ ajj).2
+      b[c₃ + j] := d.apply s₃ ajj
 
 public theorem trsmTUpper4Data_eq (d : Diag) (A : Mat m m) (o₀ o₁ o₂ o₃ : Nat) (b : Float32Array)
     (h₁ : o₀ + m ≤ o₁) (h₂ : o₁ + m ≤ o₂) (h₃ : o₂ + m ≤ o₃) (h₄ : o₃ + m ≤ b.size)
@@ -378,7 +378,7 @@ public def trsmTLower4Data (d : Diag) (A : Mat m m) (o₀ o₁ o₂ o₃ : Nat) 
   have e₃ : c₃.toNat = o₃ := by grind
   let ao := A.off.toUSize
   let al := A.ld.toUSize
-  (inplace b do
+  inplace b do
     for k in 0...mu do
       have hj : (mu - 1 - k).toNat = m - 1 - k.toNat := by grind
       have hjn : (mu - 1 - k).toNat < m := by lia
@@ -405,7 +405,7 @@ public def trsmTLower4Data (d : Diag) (A : Mat m m) (o₀ o₁ o₂ o₃ : Nat) 
       b[c₀ + (mu - 1 - k)] := d.apply s₀ ajj
       b[c₁ + (mu - 1 - k)] := d.apply s₁ ajj
       b[c₂ + (mu - 1 - k)] := d.apply s₂ ajj
-      b[c₃ + (mu - 1 - k)] := d.apply s₃ ajj).2
+      b[c₃ + (mu - 1 - k)] := d.apply s₃ ajj
 
 public theorem trsmTLower4Data_eq (d : Diag) (A : Mat m m) (o₀ o₁ o₂ o₃ : Nat) (b : Float32Array)
     (h₁ : o₀ + m ≤ o₁) (h₂ : o₁ + m ≤ o₂) (h₃ : o₂ + m ≤ o₃) (h₄ : o₃ + m ≤ b.size)
@@ -1004,7 +1004,7 @@ public def trsmRightTColData (d : Diag) (A : Mat n n) (up : Bool) (bo bl j cnt :
   have ecj : cj.toNat = bo + bl * j := by grind
   let q4 := cu / 4
   have hq4 : q4.toNat = cnt / 4 := by simp only [q4, USize.toNat_div, hcu]; simp
-  (inplace b do
+  inplace b do
     for q in 0...q4 do
       have h₀ : (4 * q).toNat = 4 * q.toNat := by grind
       have h₁ : (4 * q + 1).toNat = 4 * q.toNat + 1 := by grind
@@ -1057,7 +1057,7 @@ public def trsmRightTColData (d : Diag) (A : Mat n n) (up : Bool) (bo bl j cnt :
     for i in 0...d.rows mu do
       have : i.toNat < m := Nat.lt_of_lt_of_le (by assumption) (hmu ▸ d.toNat_rows_le)
       have p : (cj + i).toNat < b.size := by grind
-      b[cj + i] := b[cj + i] / ajj).2
+      b[cj + i] := b[cj + i] / ajj
 
 public theorem trsmRightTColData_eq (d : Diag) (A : Mat n n) (up : Bool) (bo bl j cnt : Nat)
     (b : Float32Array) (hj : j < n) (hcnt : cnt ≤ n) (hk : ∀ t, t < cnt → subColIdx n up t < n)

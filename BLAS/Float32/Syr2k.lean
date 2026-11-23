@@ -65,7 +65,7 @@ public def syr2kColData (uplo : Uplo) (α : Float32) (A B : Mat n k) (β : Float
     let cj := C.off.toUSize + C.ld.toUSize * ju
     let lo := uplo.loU ju
     let hi := uplo.hiU nu ju
-    (inplace c do
+    inplace c do
       for i in lo...hi do
         have hk : (cj + 1 * i).toNat < c.size :=
           C.toNat_col_index_lt hs.2.2.1
@@ -83,7 +83,7 @@ public def syr2kColData (uplo : Uplo) (α : Float32) (A B : Mat n k) (β : Float
           have hi : i.toNat < n := lt_of_hiU (u := uplo) (j := ju) hnu (by lia) (by lia)
           have hk : (cj + 1 * i).toNat < c.size := C.toNat_col_index_lt hs.2.2.1 hi (by lia)
           c[cj + 1 * i] := c[cj + 1 * i] + A.uget ao al rfl rfl hs.1 i l hi (by lia) * t1 +
-            B.uget bo bl rfl rfl hs.2.1 i l hi (by lia) * t2).2
+            B.uget bo bl rfl rfl hs.2.1 i l hi (by lia) * t2
   else C.data.modifyAt (Stride.mk (C.off + C.ld * j) 1).idx 0 n fun i v =>
     syr2kAt uplo α A B β i j v
 
@@ -335,7 +335,7 @@ public def syr2kTData (uplo : Uplo) (α : Float32) (A B : Mat k n) (β : Float32
     let c := C.data
     let co := C.off.toUSize
     let cl := C.ld.toUSize
-    (inplace c do
+    inplace c do
       for j in 0...nu do
         let cj := co + cl * j
         let lo := uplo.loU j
@@ -345,7 +345,7 @@ public def syr2kTData (uplo : Uplo) (α : Float32) (A B : Mat k n) (β : Float32
           have hi : i.toNat < n := lt_of_hiU (u := uplo) (j := j) hnu (by lia) (by lia)
           have hk : (cj + 1 * i).toNat < c.size := C.toNat_col_index_lt hs.2.2.1 hi (by lia)
           c[cj + 1 * i] :=
-            syr2kTVal α β s₁[(i - lo).toNat]! s₂[(i - lo).toNat]! c[cj + 1 * i]).2
+            syr2kTVal α β s₁[(i - lo).toNat]! s₂[(i - lo).toNat]! c[cj + 1 * i]
   else mapMat C.data C.off C.ld n 0 n (syr2kTAt uplo α A B β)
 
 public theorem syr2kTData_eq (uplo : Uplo) (α : Float32) (A B : Mat k n) (β : Float32)

@@ -224,7 +224,7 @@ public def trsvTUpperData (d : Diag) (A : Mat n n) (x : Vec n) : Float32Array :=
     let al := A.ld.toUSize
     let q4 := nu / 4
     have hq4 : q4.toNat = n / 4 := by simp only [q4, USize.toNat_div, hnu]; simp
-    (inplace a do
+    inplace a do
       for g in 0...q4 do
         have e₀ : (4 * g).toNat = 4 * g.toNat := by grind
         have e₁ : (4 * g + 1).toNat = 4 * g.toNat + 1 := by grind
@@ -268,7 +268,7 @@ public def trsvTUpperData (d : Diag) (A : Mat n n) (x : Vec n) : Float32Array :=
         for i in 0...j with (t := v) do
           have hi : (o + c * i).toNat < a.size := x.toNat_index_lt hs.2 (by lia)
           t := t - A.uget ao al rfl rfl hs.1 i j (by lia) (by lia) * a[o + c * i]
-        a[o + c * j] := d.apply t (A.uget ao al rfl rfl hs.1 j j (by lia) (by lia))).2
+        a[o + c * j] := d.apply t (A.uget ao al rfl rfl hs.1 j j (by lia) (by lia))
   else iterRange (trsvTUpperStep d A x) 0 n x.data
 
 public theorem trsvTUpperData_eq_iterRange (d : Diag) (A : Mat n n) (x : Vec n) :
@@ -427,7 +427,7 @@ public def trsvTLowerData (d : Diag) (A : Mat n n) (x : Vec n) : Float32Array :=
     let al := A.ld.toUSize
     let q4 := nu / 4
     have hq4 : q4.toNat = n / 4 := by simp only [q4, USize.toNat_div, hnu]; simp
-    (inplace a do
+    inplace a do
       for g in 0...q4 do
         have j₀ : (nu - 1 - 4 * g).toNat = n - 1 - 4 * g.toNat := by grind
         have j₁ : (nu - 1 - (4 * g + 1)).toNat = n - 1 - (4 * g.toNat + 1) := by grind
@@ -489,7 +489,7 @@ public def trsvTLowerData (d : Diag) (A : Mat n n) (x : Vec n) : Float32Array :=
           s := s - A.uget ao al rfl rfl hs.1 (nu - 1 - t) (nu - 1 - k) hi hjn *
             a[o + c * (nu - 1 - t)]
         a[o + c * (nu - 1 - k)] :=
-          d.apply s (A.uget ao al rfl rfl hs.1 (nu - 1 - k) (nu - 1 - k) hjn hjn)).2
+          d.apply s (A.uget ao al rfl rfl hs.1 (nu - 1 - k) (nu - 1 - k) hjn hjn)
   else iterRange (trsvTLowerStep d A x) 0 n x.data
 
 public theorem trsvTLowerData_eq_iterRange (d : Diag) (A : Mat n n) (x : Vec n) :
@@ -692,7 +692,7 @@ public def trsvTLowerAscData (d : Diag) (A : Mat n n) (x : Vec n) : Float32Array
     let c := x.inc.toUSize
     let ao := A.off.toUSize
     let al := A.ld.toUSize
-    (inplace a do
+    inplace a do
       for k in 0...nu do
         have hj : (nu - 1 - k).toNat = n - 1 - k.toNat := by grind
         have hjn : (nu - 1 - k).toNat < n := by lia
@@ -704,7 +704,7 @@ public def trsvTLowerAscData (d : Diag) (A : Mat n n) (x : Vec n) : Float32Array
           s := s - A.uget ao al rfl rfl hs.1 (nu - 1 - k + 1 + t) (nu - 1 - k) hi hjn *
             a[o + c * (nu - 1 - k + 1 + t)]
         a[o + c * (nu - 1 - k)] :=
-          d.apply s (A.uget ao al rfl rfl hs.1 (nu - 1 - k) (nu - 1 - k) hjn hjn)).2
+          d.apply s (A.uget ao al rfl rfl hs.1 (nu - 1 - k) (nu - 1 - k) hjn hjn)
   else iterRange (trsvTLowerAscStep d A x) 0 n x.data
 
 public theorem trsvTLowerAscData_eq_iterRange (d : Diag) (A : Mat n n) (x : Vec n) :

@@ -62,10 +62,10 @@ public def gemvScale (β : Float) (y : Vec m) (hs : y.data.size < USize.size) : 
   let a := y.data
   let o := y.off.toUSize
   let c := y.inc.toUSize
-  (inplace a do
+  inplace a do
     for i in 0...m.toUSize do
       have hk : (o + c * i).toNat < a.size := y.toNat_index_lt hs (by lia)
-      a[o + c * i] := betaMul β a[o + c * i]).2
+      a[o + c * i] := betaMul β a[o + c * i]
 
 private theorem gemvScale_eq (β : Float) (y : Vec m) (hs : y.data.size < USize.size) :
     gemvScale β y hs = y.data.modifyAt y.stride.idx 0 m fun _ v => betaMul β v := by
@@ -508,10 +508,10 @@ public def gemvTData (α : Float) (A : Mat m n) (x : Vec m) (β : Float) (y : Ve
     let a := y.data
     let o := y.off.toUSize
     let c := y.inc.toUSize
-    (inplace a do
+    inplace a do
       for j in 0...nu do
         have hk : (o + c * j).toNat < a.size := y.toNat_index_lt hs.2.2 (by lia)
-        a[o + c * j] := betaMul β a[o + c * j] + α * sums.uget j (by lia)).2
+        a[o + c * j] := betaMul β a[o + c * j] + α * sums.uget j (by lia)
   else y.data.modifyAt y.stride.idx 0 n (gemvTSumAt α A x β)
 
 public theorem gemvTData_eq (α : Float) (A : Mat m n) (x : Vec m) (β : Float) (y : Vec n) :
@@ -635,7 +635,7 @@ public def gerData (α : Float) (x : Vec m) (y : Vec n) (A : Mat m n) : Float64A
     let xc := x.inc.toUSize
     let yo := y.off.toUSize
     let yc := y.inc.toUSize
-    (inplace a do
+    inplace a do
       for j in 0...nu do
         let yj := y.uget yo yc rfl rfl hs.2.2 j (by lia)
         let t := α * yj
@@ -645,7 +645,7 @@ public def gerData (α : Float) (x : Vec m) (y : Vec n) (A : Mat m n) : Float64A
         have hhi : hi.toNat ≤ m := gerRows_le hmu yj
         for i in 0...hi do
           have hk : (cj + 1 * i).toNat < a.size := A.toNat_col_index_lt hs.1 (by lia) (by lia)
-          a[cj + 1 * i] := a[cj + 1 * i] + x.uget xo xc rfl rfl hs.2.1 i (by lia) * t).2
+          a[cj + 1 * i] := a[cj + 1 * i] + x.uget xo xc rfl rfl hs.2.1 i (by lia) * t
   else mapMat A.data A.off A.ld m 0 n (gerAt α x y)
 
 public theorem gerData_eq (α : Float) (x : Vec m) (y : Vec n) (A : Mat m n) :
