@@ -173,7 +173,7 @@ public def gbmvCols (kl ku : Nat) (α : Float) (A : Mat (kl + ku + 1) n) (x : Ve
   let xc := x.inc.toUSize
   let ao := A.off.toUSize
   let al := A.ld.toUSize
-  (inplace c do
+  inplace c do
     for j in 0...nu do
       have hjn : j.toNat < n := by lia
       have hk : kl + ku + 1 < USize.size := A.rows_lt_size hs.1 (by lia) (by lia)
@@ -187,7 +187,7 @@ public def gbmvCols (kl ku : Nat) (α : Float) (A : Mat (kl + ku + 1) n) (x : Ve
         have hq : (o + cc * (lo + l)).toNat < c.size :=
           hc ▸ ho ▸ hcc ▸ y.toNat_index_lt hs.2.2 hi
         c[o + cc * (lo + l)] :=
-          c[o + cc * (lo + l)] + t * A.uget ao al rfl rfl hs.1 (r0 + l) j (hr.1 ▸ hr.2) hjn).2
+          c[o + cc * (lo + l)] + t * A.uget ao al rfl rfl hs.1 (r0 + l) j (hr.1 ▸ hr.2) hjn
 
 public theorem gbmvCols_eq (kl ku : Nat) (α : Float) (A : Mat (kl + ku + 1) n) (x : Vec n)
     (y : Vec m)
@@ -392,11 +392,11 @@ public def gbmvTData (kl ku : Nat) (α : Float) (A : Mat (kl + ku + 1) n) (x : V
     let al := A.ld.toUSize
     let xo := x.off.toUSize
     let xc := x.inc.toUSize
-    (inplace a do
+    inplace a do
       for j in 0...nu do
         have hk : (o + c * j).toNat < a.size := y.toNat_index_lt hs.2.2 (by lia)
         a[o + c * j] := betaMul β a[o + c * j] +
-          α * gbmvTDotU kl ku A x ⟨hs.1, hs.2.1⟩ ao al xo xc rfl rfl rfl rfl j (by lia)).2
+          α * gbmvTDotU kl ku A x ⟨hs.1, hs.2.1⟩ ao al xo xc rfl rfl rfl rfl j (by lia)
   else y.data.modifyAt y.stride.idx 0 n (gbmvTSumAt kl ku α A x β)
 
 public theorem gbmvTData_eq (kl ku : Nat) (α : Float) (A : Mat (kl + ku + 1) n) (x : Vec m)

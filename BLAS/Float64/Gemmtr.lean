@@ -62,7 +62,7 @@ public def gemmtrColData (uplo : Uplo) (α : Float) (A : Mat n k) (B : Mat k n) 
     let cj := C.off.toUSize + C.ld.toUSize * ju
     let lo := uplo.loU ju
     let hi := uplo.hiU nu ju
-    (inplace c do
+    inplace c do
       for i in lo...hi do
         have hk : (cj + 1 * i).toNat < c.size :=
           C.toNat_col_index_lt hs.2.2.1
@@ -73,7 +73,7 @@ public def gemmtrColData (uplo : Uplo) (α : Float) (A : Mat n k) (B : Mat k n) 
         for i in lo...hi do
           have hi : i.toNat < n := lt_of_hiU (u := uplo) (j := ju) hnu (by lia) (by lia)
           have hk : (cj + 1 * i).toNat < c.size := C.toNat_col_index_lt hs.2.2.1 hi (by lia)
-          c[cj + 1 * i] := c[cj + 1 * i] + t * A.uget ao al rfl rfl hs.1 i l hi (by lia)).2
+          c[cj + 1 * i] := c[cj + 1 * i] + t * A.uget ao al rfl rfl hs.1 i l hi (by lia)
   else C.data.modifyAt (Stride.mk (C.off + C.ld * j) 1).idx 0 n fun i v =>
     gemmtrAt uplo α A B β i j v
 
@@ -249,7 +249,7 @@ public def gemmtrTNCols (uplo : Uplo) (α : Float) (A B : Mat k n) (β : Float) 
     let c := C.data
     let co := C.off.toUSize
     let cl := C.ld.toUSize
-    (inplace c do
+    inplace c do
       for j in 0...nu do
         let cj := co + cl * j
         let lo := uplo.loU j
@@ -257,7 +257,7 @@ public def gemmtrTNCols (uplo : Uplo) (α : Float) (A B : Mat k n) (β : Float) 
         for i in lo...uplo.hiU nu j do
           have hi : i.toNat < n := lt_of_hiU (u := uplo) (j := j) hnu (by lia) (by lia)
           have hk : (cj + 1 * i).toNat < c.size := C.toNat_col_index_lt hs.2.2.1 hi (by lia)
-          c[cj + 1 * i] := syrkTVal α β s[(i - lo).toNat]! c[cj + 1 * i]).2
+          c[cj + 1 * i] := syrkTVal α β s[(i - lo).toNat]! c[cj + 1 * i]
   else mapMat C.data C.off C.ld n 0 n (gemmtrTNAt uplo α A B β)
 
 public theorem gemmtrTNCols_eq (uplo : Uplo) (α : Float) (A B : Mat k n) (β : Float)

@@ -542,7 +542,7 @@ public def symmUpper4Data (α : Float32) (A : Mat m m) (B : Mat m n) (β : Float
   let al := A.ld.toUSize
   let bo := B.off.toUSize
   let bl := B.ld.toUSize
-  (inplace b do
+  inplace b do
     for p in 0...mu do
       have hpm : p.toNat < m := by lia
       let B' := fun (k j : USize) (hk : k.toNat < m) (hj : j.toNat < n) =>
@@ -574,7 +574,7 @@ public def symmUpper4Data (α : Float32) (A : Mat m m) (B : Mat m n) (β : Float
       b[c₀ + p] := symmDiag β b[c₀ + p] (t₀ * app) + α * s₀
       b[c₁ + p] := symmDiag β b[c₁ + p] (t₁ * app) + α * s₁
       b[c₂ + p] := symmDiag β b[c₂ + p] (t₂ * app) + α * s₂
-      b[c₃ + p] := symmDiag β b[c₃ + p] (t₃ * app) + α * s₃).2
+      b[c₃ + p] := symmDiag β b[c₃ + p] (t₃ * app) + α * s₃
 
 public theorem symmUpper4Data_eq (α : Float32) (A : Mat m m) (B : Mat m n) (β : Float32) (J : Nat)
     (o₀ o₁ o₂ o₃ : Nat) (b : Float32Array)
@@ -670,7 +670,7 @@ public def symmLower4Data (α : Float32) (A : Mat m m) (B : Mat m n) (β : Float
   let al := A.ld.toUSize
   let bo := B.off.toUSize
   let bl := B.ld.toUSize
-  (inplace b do
+  inplace b do
     for q in 0...mu do
       have hpm : (mu - 1 - q).toNat < m := by grind
       let B' := fun (k j : USize) (hk : k.toNat < m) (hj : j.toNat < n) =>
@@ -702,7 +702,7 @@ public def symmLower4Data (α : Float32) (A : Mat m m) (B : Mat m n) (β : Float
       b[c₀ + (mu - 1 - q)] := symmDiag β b[c₀ + (mu - 1 - q)] (t₀ * app) + α * s₀
       b[c₁ + (mu - 1 - q)] := symmDiag β b[c₁ + (mu - 1 - q)] (t₁ * app) + α * s₁
       b[c₂ + (mu - 1 - q)] := symmDiag β b[c₂ + (mu - 1 - q)] (t₂ * app) + α * s₂
-      b[c₃ + (mu - 1 - q)] := symmDiag β b[c₃ + (mu - 1 - q)] (t₃ * app) + α * s₃).2
+      b[c₃ + (mu - 1 - q)] := symmDiag β b[c₃ + (mu - 1 - q)] (t₃ * app) + α * s₃
 
 public theorem symmLower4Data_eq (α : Float32) (A : Mat m m) (B : Mat m n) (β : Float32) (J : Nat)
     (o₀ o₁ o₂ o₃ : Nat) (b : Float32Array)

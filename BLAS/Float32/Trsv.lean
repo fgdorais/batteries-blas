@@ -126,7 +126,7 @@ public def trsvLowerData (d : Diag) (A : Mat n n) (x : Vec n) : Float32Array :=
     let c := x.inc.toUSize
     let ao := A.off.toUSize
     let al := A.ld.toUSize
-    (inplace a do
+    inplace a do
       for j in 0...nu do
         have hk : (o + c * j).toNat < a.size := x.toNat_index_lt hs.2 (by lia)
         let v := a[o + c * j]
@@ -143,7 +143,7 @@ public def trsvLowerData (d : Diag) (A : Mat n n) (x : Vec n) : Float32Array :=
             exact this
           a[o + c * (j + 1) + c * k] := a[o + c * (j + 1) + c * k] -
             t * A.uget ao al rfl rfl hs.1 (j + 1 + k) j
-              (by grind [-PUnit]) (by lia)).2
+              (by grind [-PUnit]) (by lia)
   else iterRange (trsvLowerStep d A x) 0 n x.data
 
 public theorem trsvLowerData_eq_iterRange (d : Diag) (A : Mat n n) (x : Vec n) :
@@ -257,7 +257,7 @@ public def trsvUpperData (d : Diag) (A : Mat n n) (x : Vec n) : Float32Array :=
     let c := x.inc.toUSize
     let ao := A.off.toUSize
     let al := A.ld.toUSize
-    (inplace a do
+    inplace a do
       for k in 0...nu do
         have hj : (nu - 1 - k).toNat = n - 1 - k.toNat := by grind
         have hjn : (nu - 1 - k).toNat < n := by lia
@@ -270,7 +270,7 @@ public def trsvUpperData (d : Diag) (A : Mat n n) (x : Vec n) : Float32Array :=
           have hi : i.toNat < n := lt_of_lt_sub_one_sub (by rw [← hj]; assumption)
           have hk' : (o + c * i).toNat < a.size := x.toNat_index_lt hs.2 hi
           a[o + c * i] := a[o + c * i] -
-            t * A.uget ao al rfl rfl hs.1 i (nu - 1 - k) hi hjn).2
+            t * A.uget ao al rfl rfl hs.1 i (nu - 1 - k) hi hjn
   else iterRange (trsvUpperStep d A x) 0 n x.data
 
 public theorem trsvUpperData_eq_iterRange (d : Diag) (A : Mat n n) (x : Vec n) :

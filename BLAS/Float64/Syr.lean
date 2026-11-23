@@ -77,7 +77,7 @@ public def syrData (uplo : Uplo) (α : Float) (x : Vec n) (A : Mat n n) : Float6
     let al := A.ld.toUSize
     let xo := x.off.toUSize
     let xc := x.inc.toUSize
-    (inplace a do
+    inplace a do
       for j in 0...nu do
         let xj := x.uget xo xc rfl rfl hs.2 j (by lia)
         let t := α * xj
@@ -91,7 +91,7 @@ public def syrData (uplo : Uplo) (α : Float) (x : Vec n) (A : Mat n n) : Float6
           have hi' : i.toNat < n :=
             lt_of_hiU' (u := uplo) (j := j) hnu (by lia) (Nat.lt_of_lt_of_le (by assumption) hh)
           have hk : (cj + 1 * i).toNat < a.size := A.toNat_col_index_lt hs.1 hi' (by lia)
-          a[cj + 1 * i] := a[cj + 1 * i] + x.uget xo xc rfl rfl hs.2 i hi' * t).2
+          a[cj + 1 * i] := a[cj + 1 * i] + x.uget xo xc rfl rfl hs.2 i hi' * t
   else mapMat A.data A.off A.ld n 0 n (syrAt uplo α x)
 
 public theorem syrData_eq (uplo : Uplo) (α : Float) (x : Vec n) (A : Mat n n) :
@@ -203,7 +203,7 @@ public def syr2Data (uplo : Uplo) (α : Float) (x y : Vec n) (A : Mat n n) : Flo
     let xc := x.inc.toUSize
     let yo := y.off.toUSize
     let yc := y.inc.toUSize
-    (inplace a do
+    inplace a do
       for j in 0...nu do
         let xj := x.uget xo xc rfl rfl hs.2.1 j (by lia)
         let yj := y.uget yo yc rfl rfl hs.2.2 j (by lia)
@@ -219,7 +219,7 @@ public def syr2Data (uplo : Uplo) (α : Float) (x y : Vec n) (A : Mat n n) : Flo
             lt_of_hiU' (u := uplo) (j := j) hnu (by lia) (Nat.lt_of_lt_of_le (by assumption) hh)
           have hk : (cj + 1 * i).toNat < a.size := A.toNat_col_index_lt hs.1 hi' (by lia)
           a[cj + 1 * i] := a[cj + 1 * i] + x.uget xo xc rfl rfl hs.2.1 i hi' * t1 +
-            y.uget yo yc rfl rfl hs.2.2 i hi' * t2).2
+            y.uget yo yc rfl rfl hs.2.2 i hi' * t2
   else mapMat A.data A.off A.ld n 0 n (syr2At uplo α x y)
 
 public theorem syr2Data_eq (uplo : Uplo) (α : Float) (x y : Vec n) (A : Mat n n) :

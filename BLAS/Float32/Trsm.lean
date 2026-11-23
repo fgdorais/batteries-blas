@@ -1109,7 +1109,7 @@ public def trsmRightUpperData (d : Diag) (α : Float32) (A : Mat n n) (B : Mat m
     let al := A.ld.toUSize
     let bo := B.off.toUSize
     let bl := B.ld.toUSize
-    (inplace b do
+    inplace b do
       for j in 0...nu do
         let cj := bo + bl * j
         for i in 0...mu do
@@ -1129,7 +1129,7 @@ public def trsmRightUpperData (d : Diag) (α : Float32) (A : Mat n n) (B : Mat m
           have hk : (cj + 1 * i).toNat < b.size :=
             B.toNat_col_index_lt hs.2.1 (Nat.lt_of_lt_of_le (by assumption)
               (hmu ▸ d.toNat_rows_le)) (by lia)
-          b[cj + 1 * i] := b[cj + 1 * i] / ajj).2
+          b[cj + 1 * i] := b[cj + 1 * i] / ajj
   else mapMat B.data B.off B.ld m 0 n fun i j _ => trsmRightUpper d α A B i j
 
 /--
@@ -1267,7 +1267,7 @@ public def trsmRightLowerData (d : Diag) (α : Float32) (A : Mat n n) (B : Mat m
     let al := A.ld.toUSize
     let bo := B.off.toUSize
     let bl := B.ld.toUSize
-    (inplace b do
+    inplace b do
       for t in 0...nu do
         let j := nu - 1 - t
         have hj : j.toNat = n - 1 - t.toNat := by grind
@@ -1290,7 +1290,7 @@ public def trsmRightLowerData (d : Diag) (α : Float32) (A : Mat n n) (B : Mat m
           have hk : (cj + 1 * i).toNat < b.size :=
             B.toNat_col_index_lt hs.2.1 (Nat.lt_of_lt_of_le (by assumption)
               (hmu ▸ d.toNat_rows_le)) hjn
-          b[cj + 1 * i] := b[cj + 1 * i] / ajj).2
+          b[cj + 1 * i] := b[cj + 1 * i] / ajj
   else mapMat B.data B.off B.ld m 0 n fun i j _ => trsmRightLower d α A B i j
 
 /--

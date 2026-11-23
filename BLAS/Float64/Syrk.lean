@@ -140,7 +140,7 @@ public def syrkColData (uplo : Uplo) (α : Float) (A : Mat n k) (β : Float) (C 
     let cj := C.off.toUSize + C.ld.toUSize * ju
     let lo := uplo.loU ju
     let hi := uplo.hiU nu ju
-    (inplace c do
+    inplace c do
       for i in lo...hi do
         have hk : (cj + 1 * i).toNat < c.size :=
           C.toNat_col_index_lt hs.2.1
@@ -158,7 +158,7 @@ public def syrkColData (uplo : Uplo) (α : Float) (A : Mat n k) (β : Float) (C 
               (lt_of_hiU (u := uplo) (j := ju) hnu (by lia) (by lia)) (by lia)
           c[cj + 1 * i] := c[cj + 1 * i] +
             t * A.uget ao al rfl rfl hs.1 i l
-              (lt_of_hiU (u := uplo) (j := ju) hnu (by lia) (by lia)) (by lia)).2
+              (lt_of_hiU (u := uplo) (j := ju) hnu (by lia) (by lia)) (by lia)
   else C.data.modifyAt (Stride.mk (C.off + C.ld * j) 1).idx 0 n fun i v => syrkAt uplo α A β i j v
 
 public theorem syrkColData_eq (uplo : Uplo) (α : Float) (A : Mat n k) (β : Float) (C : Mat n n)
@@ -368,7 +368,7 @@ public def syrkCol2Data (uplo : Uplo) (α : Float) (A : Mat n k) (β : Float) (C
     let lo1 := uplo.loU ju1
     let hi1 := uplo.hiU nu ju1
     have ho := order2U uplo hnu hju hju1 hj
-    (inplace c do
+    inplace c do
       for i in lo0...hi0 do
         have hk : (cj + 1 * i).toNat < c.size :=
           C.toNat_col_index_lt hs.2.1 (by lia) (by lia)
@@ -407,7 +407,7 @@ public def syrkCol2Data (uplo : Uplo) (α : Float) (A : Mat n k) (β : Float) (C
         have he1 : e1.toNat ≤ hi1.toNat := syrkRows_le hb1 _
         for i in b1...e1 do
           have hk : (cj1 + 1 * i).toNat < c.size := C.toNat_col_index_lt hs.2.1 (by lia) (by lia)
-          c[cj1 + 1 * i] := c[cj1 + 1 * i] + t1 * A.uget ao al rfl rfl hs.1 i l (by lia) (by lia)).2
+          c[cj1 + 1 * i] := c[cj1 + 1 * i] + t1 * A.uget ao al rfl rfl hs.1 i l (by lia) (by lia)
   else mapMat C.data C.off C.ld n j (j + 2) fun i c v => syrkAt uplo α A β i c v
 
 public theorem syrkCol2Data_eq (uplo : Uplo) (α : Float) (A : Mat n k) (β : Float) (C : Mat n n)
@@ -668,14 +668,14 @@ public def scalTriData (uplo : Uplo) (β : Float) (C : Mat n n) : Float64Array :
     let c := C.data
     let co := C.off.toUSize
     let cl := C.ld.toUSize
-    (inplace c do
+    inplace c do
       for j in 0...nu do
         let cj := co + cl * j
         for i in uplo.loU j...uplo.hiU nu j do
           have hk : (cj + 1 * i).toNat < c.size :=
             C.toNat_col_index_lt hs.1 (lt_of_hiU (u := uplo) (j := j) hnu (by lia) (by lia))
               (by lia)
-          c[cj + 1 * i] := betaMul β c[cj + 1 * i]).2
+          c[cj + 1 * i] := betaMul β c[cj + 1 * i]
   else mapMat C.data C.off C.ld n 0 n (scalTriAt uplo β)
 
 public theorem scalTriData_eq (uplo : Uplo) (β : Float) (C : Mat n n) :
@@ -796,7 +796,7 @@ public def syrkTData (uplo : Uplo) (α : Float) (A : Mat k n) (β : Float) (C : 
     let c := C.data
     let co := C.off.toUSize
     let cl := C.ld.toUSize
-    (inplace c do
+    inplace c do
       for j in 0...nu do
         let cj := co + cl * j
         let lo := uplo.loU j
@@ -804,7 +804,7 @@ public def syrkTData (uplo : Uplo) (α : Float) (A : Mat k n) (β : Float) (C : 
         for i in lo...uplo.hiU nu j do
           have hi : i.toNat < n := lt_of_hiU (u := uplo) (j := j) hnu (by lia) (by lia)
           have hk : (cj + 1 * i).toNat < c.size := C.toNat_col_index_lt hs.2.1 hi (by lia)
-          c[cj + 1 * i] := syrkTVal α β sums[(i - lo).toNat]! c[cj + 1 * i]).2
+          c[cj + 1 * i] := syrkTVal α β sums[(i - lo).toNat]! c[cj + 1 * i]
   else mapMat C.data C.off C.ld n 0 n (syrkTAt uplo α A β)
 
 public theorem syrkTData_eq (uplo : Uplo) (α : Float) (A : Mat k n) (β : Float) (C : Mat n n) :

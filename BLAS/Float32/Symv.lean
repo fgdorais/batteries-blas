@@ -60,10 +60,10 @@ public def symvScale (β : Float32) (y : Vec n) (hs : y.data.size < USize.size) 
   let a := y.data
   let o := y.off.toUSize
   let c := y.inc.toUSize
-  (inplace a do
+  inplace a do
     for i in 0...n.toUSize do
       have hk : (o + c * i).toNat < a.size := y.toNat_index_lt hs (by lia)
-      a[o + c * i] := betaMul β a[o + c * i]).2
+      a[o + c * i] := betaMul β a[o + c * i]
 
 public theorem symvScale_eq (β : Float32) (y : Vec n) (hs : y.data.size < USize.size) :
     symvScale β y hs = y.data.modifyAt y.stride.idx 0 n fun _ v => betaMul β v := by
@@ -202,7 +202,7 @@ public def symvUpperData (α : Float32) (A : Mat n n) (x y : Vec n)
   let al := A.ld.toUSize
   let q4 := nu / 4
   have hq4 : q4.toNat = n / 4 := by simp only [q4, nu, USize.toNat_div, hnu]; simp
-  (inplace c do
+  inplace c do
     for g in 0...q4 do
       have hn : n < USize.size := Nat.lt_of_le_of_lt x.le_size hs.2.1
       have j₀ : (4 * g).toNat = 4 * g.toNat := by grind
@@ -268,7 +268,7 @@ public def symvUpperData (α : Float32) (A : Mat n n) (x y : Vec n)
         c[o + cc * i] := c[o + cc * i] + t * aij
         s := s + aij * x.uget xo xc rfl rfl hs.2.1 i hi
       have hk : (o + cc * j).toNat < c.size := hc ▸ ho ▸ hcc ▸ y.toNat_index_lt hs.2.2 hjn
-      c[o + cc * j] := c[o + cc * j] + t * A.uget ao al rfl rfl hs.1 j j hjn hjn + α * s).2
+      c[o + cc * j] := c[o + cc * j] + t * A.uget ao al rfl rfl hs.1 j j hjn hjn + α * s
 
 public theorem symvUpperData_eq_iterRange (α : Float32) (A : Mat n n) (x y : Vec n)
     (hs : A.data.size < USize.size ∧ x.data.size < USize.size ∧ y.data.size < USize.size)
@@ -626,7 +626,7 @@ public def symvLowerData (α : Float32) (A : Mat n n) (x y : Vec n)
   let al := A.ld.toUSize
   let q4 := nu / 4
   have hq4 : q4.toNat = n / 4 := by simp only [q4, nu, USize.toNat_div, hnu]; simp
-  (inplace c do
+  inplace c do
     for g in 0...q4 do
       have hn : n < USize.size := Nat.lt_of_le_of_lt x.le_size hs.2.1
       have j₀ : (4 * g).toNat = 4 * g.toNat := by grind
@@ -695,7 +695,7 @@ public def symvLowerData (α : Float32) (A : Mat n n) (x y : Vec n)
         let aij := A.uget ao al rfl rfl hs.1 (j + 1 + l) j hi hjn
         c[o + cc * (j + 1 + l)] := c[o + cc * (j + 1 + l)] + t * aij
         s := s + aij * x.uget xo xc rfl rfl hs.2.1 (j + 1 + l) hi
-      c[o + cc * j] := d + α * s).2
+      c[o + cc * j] := d + α * s
 
 public theorem symvLowerData_eq_iterRange (α : Float32) (A : Mat n n) (x y : Vec n)
     (hs : A.data.size < USize.size ∧ x.data.size < USize.size ∧ y.data.size < USize.size)

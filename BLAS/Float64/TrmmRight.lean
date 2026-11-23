@@ -181,7 +181,7 @@ public def trmmRightLowerData (d : Diag) (α : Float) (A : Mat n n) (B : Mat m n
     let al := A.ld.toUSize
     let bo := B.off.toUSize
     let bl := B.ld.toUSize
-    (inplace b do
+    inplace b do
       for j in 0...nu do
         let cj := bo + bl * j
         let tj := d.mul α (A.uget ao al rfl rfl hs.1 j j (by lia) (by lia))
@@ -195,7 +195,7 @@ public def trmmRightLowerData (d : Diag) (α : Float) (A : Mat n n) (B : Mat m n
           for i in 0...mu do
             have hq : (cj + 1 * i).toNat < b.size := B.toNat_col_index_lt hs.2.1 (by lia) (by lia)
             have hq' : (ck + 1 * i).toNat < b.size := B.toNat_col_index_lt hs.2.1 (by lia) hk
-            b[cj + 1 * i] := b[cj + 1 * i] + w * b[ck + 1 * i]).2
+            b[cj + 1 * i] := b[cj + 1 * i] + w * b[ck + 1 * i]
   else mapMat B.data B.off B.ld m 0 n (rightVal B (fun j => n - 1 - j) (fun j t => j + 1 + t)
     (trmmRightLowerW α A) (fun j v => d.mul α A.data[A.off + A.ld * j + j]! * v))
 
@@ -286,7 +286,7 @@ public def trmmRightUpperData (d : Diag) (α : Float) (A : Mat n n) (B : Mat m n
     let al := A.ld.toUSize
     let bo := B.off.toUSize
     let bl := B.ld.toUSize
-    (inplace b do
+    inplace b do
       for p in 0...nu do
         have hj : (nu - 1 - p).toNat = n - 1 - p.toNat := by grind
         have hjn : (nu - 1 - p).toNat < n := by lia
@@ -302,7 +302,7 @@ public def trmmRightUpperData (d : Diag) (α : Float) (A : Mat n n) (B : Mat m n
           for i in 0...mu do
             have hq : (cj + 1 * i).toNat < b.size := B.toNat_col_index_lt hs.2.1 (by lia) hjn
             have hq' : (ck + 1 * i).toNat < b.size := B.toNat_col_index_lt hs.2.1 (by lia) hk
-            b[cj + 1 * i] := b[cj + 1 * i] + w * b[ck + 1 * i]).2
+            b[cj + 1 * i] := b[cj + 1 * i] + w * b[ck + 1 * i]
   else mapMat B.data B.off B.ld m 0 n (rightVal B (fun j => j) (fun _ t => t)
     (trmmRightUpperW α A) (fun j v => d.mul α A.data[A.off + A.ld * j + j]! * v))
 
@@ -401,7 +401,7 @@ public def trmmRightTUpperData (d : Diag) (α : Float) (A : Mat n n) (B : Mat m 
     let al := A.ld.toUSize
     let bo := B.off.toUSize
     let bl := B.ld.toUSize
-    (inplace b do
+    inplace b do
       for j in 0...nu do
         let cj := bo + bl * j
         let tj := d.mul α (A.uget ao al rfl rfl hs.1 j j (by lia) (by lia))
@@ -415,7 +415,7 @@ public def trmmRightTUpperData (d : Diag) (α : Float) (A : Mat n n) (B : Mat m 
           for i in 0...mu do
             have hq : (cj + 1 * i).toNat < b.size := B.toNat_col_index_lt hs.2.1 (by lia) (by lia)
             have hq' : (ck + 1 * i).toNat < b.size := B.toNat_col_index_lt hs.2.1 (by lia) hk
-            b[cj + 1 * i] := b[cj + 1 * i] + w * b[ck + 1 * i]).2
+            b[cj + 1 * i] := b[cj + 1 * i] + w * b[ck + 1 * i]
   else mapMat B.data B.off B.ld m 0 n (rightVal B (fun j => n - 1 - j) (fun j t => j + 1 + t)
     (trmmRightTUpperW α A) (fun j v => scaleUnlessOne (d.mul α A.data[A.off + A.ld * j + j]!) v))
 
@@ -508,7 +508,7 @@ public def trmmRightTLowerData (d : Diag) (α : Float) (A : Mat n n) (B : Mat m 
     let al := A.ld.toUSize
     let bo := B.off.toUSize
     let bl := B.ld.toUSize
-    (inplace b do
+    inplace b do
       for p in 0...nu do
         have hj : (nu - 1 - p).toNat = n - 1 - p.toNat := by grind
         have hjn : (nu - 1 - p).toNat < n := by lia
@@ -524,7 +524,7 @@ public def trmmRightTLowerData (d : Diag) (α : Float) (A : Mat n n) (B : Mat m 
           for i in 0...mu do
             have hq : (cj + 1 * i).toNat < b.size := B.toNat_col_index_lt hs.2.1 (by lia) hjn
             have hq' : (ck + 1 * i).toNat < b.size := B.toNat_col_index_lt hs.2.1 (by lia) hk
-            b[cj + 1 * i] := b[cj + 1 * i] + w * b[ck + 1 * i]).2
+            b[cj + 1 * i] := b[cj + 1 * i] + w * b[ck + 1 * i]
   else mapMat B.data B.off B.ld m 0 n (rightVal B (fun j => j) (fun j t => j - 1 - t)
     (trmmRightTLowerW α A) (fun j v => scaleUnlessOne (d.mul α A.data[A.off + A.ld * j + j]!) v))
 

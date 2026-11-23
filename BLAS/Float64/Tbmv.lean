@@ -91,7 +91,7 @@ public def tbmvUpperData (d : Diag) (k : Nat) (A : Mat (k + 1) n) (x : Vec n) : 
     let ao := A.off.toUSize
     let al := A.ld.toUSize
     let ku := k.toUSize
-    (inplace a do
+    inplace a do
       for j in 0...nu do
         have hjn : j.toNat < n := by lia
         have hku : ku.toNat = k := toNat_toUSize_of_lt (by
@@ -107,7 +107,7 @@ public def tbmvUpperData (d : Diag) (k : Nat) (A : Mat (k + 1) n) (x : Vec n) : 
           have hq' : (o + c * (lo + l)).toNat < a.size := x.toNat_index_lt hs.2 hi
           a[o + c * (lo + l)] :=
             a[o + c * (lo + l)] + t * A.uget ao al rfl rfl hs.1 (r0 + l) j (by rw [hr.1]; lia) hjn
-        a[o + c * j] := d.mul a[o + c * j] (A.uget ao al rfl rfl hs.1 ku j (by lia) hjn)).2
+        a[o + c * j] := d.mul a[o + c * j] (A.uget ao al rfl rfl hs.1 ku j (by lia) hjn)
   else iterRange (tbmvUpperStep d k A x) 0 n x.data
 
 public theorem tbmvUpperData_eq_iterRange (d : Diag) (k : Nat) (A : Mat (k + 1) n) (x : Vec n) :
@@ -221,7 +221,7 @@ public def tbmvLowerData (d : Diag) (k : Nat) (A : Mat (k + 1) n) (x : Vec n) : 
     let c := x.inc.toUSize
     let ao := A.off.toUSize
     let al := A.ld.toUSize
-    (inplace a do
+    inplace a do
       for kk in 0...nu do
         have hj : (nu - 1 - kk).toNat = n - 1 - kk.toNat := by grind
         have hjn : (nu - 1 - kk).toNat < n := by lia
@@ -236,7 +236,7 @@ public def tbmvLowerData (d : Diag) (k : Nat) (A : Mat (k + 1) n) (x : Vec n) : 
             t * A.uget ao al rfl rfl hs.1 (1 + l) (nu - 1 - kk) (hr.1 ▸ hr.2) hjn
         a[o + c * (nu - 1 - kk)] :=
           d.mul a[o + c * (nu - 1 - kk)]
-            (A.uget ao al rfl rfl hs.1 0 (nu - 1 - kk) (by simp) hjn)).2
+            (A.uget ao al rfl rfl hs.1 0 (nu - 1 - kk) (by simp) hjn)
   else iterRange (tbmvLowerStep d k A x) 0 n x.data
 
 public theorem tbmvLowerData_eq_iterRange (d : Diag) (k : Nat) (A : Mat (k + 1) n) (x : Vec n) :
@@ -357,7 +357,7 @@ public def tbmvTUpperData (d : Diag) (k : Nat) (A : Mat (k + 1) n) (x : Vec n) :
     let ao := A.off.toUSize
     let al := A.ld.toUSize
     let ku := k.toUSize
-    (inplace a do
+    inplace a do
       for kk in 0...nu do
         have hj : (nu - 1 - kk).toNat = n - 1 - kk.toNat := by grind
         have hjn : (nu - 1 - kk).toNat < n := by lia
@@ -373,7 +373,7 @@ public def tbmvTUpperData (d : Diag) (k : Nat) (A : Mat (k + 1) n) (x : Vec n) :
           have hq' : (o + c * (nu - 1 - kk - 1 - t)).toNat < a.size := x.toNat_index_lt hs.2 hi
           s := s + A.uget ao al rfl rfl hs.1 (ku - 1 - t) (nu - 1 - kk) (by rw [hr.1]; lia) hjn *
             a[o + c * (nu - 1 - kk - 1 - t)]
-        a[o + c * (nu - 1 - kk)] := s).2
+        a[o + c * (nu - 1 - kk)] := s
   else iterRange (tbmvTUpperStep d k A x) 0 n x.data
 
 public theorem tbmvTUpperData_eq_iterRange (d : Diag) (k : Nat) (A : Mat (k + 1) n) (x : Vec n) :
@@ -484,7 +484,7 @@ public def tbmvTLowerData (d : Diag) (k : Nat) (A : Mat (k + 1) n) (x : Vec n) :
     let c := x.inc.toUSize
     let ao := A.off.toUSize
     let al := A.ld.toUSize
-    (inplace a do
+    inplace a do
       for j in 0...nu do
         have hjn : j.toNat < n := by lia
         have hq : (o + c * j).toNat < a.size := x.toNat_index_lt hs.2 hjn
@@ -496,7 +496,7 @@ public def tbmvTLowerData (d : Diag) (k : Nat) (A : Mat (k + 1) n) (x : Vec n) :
           have hi : (j + 1 + t).toNat < n := hl.1 ▸ hl.2
           have hq' : (o + c * (j + 1 + t)).toNat < a.size := x.toNat_index_lt hs.2 hi
           s := s + A.uget ao al rfl rfl hs.1 (1 + t) j (hr.1 ▸ hr.2) hjn * a[o + c * (j + 1 + t)]
-        a[o + c * j] := s).2
+        a[o + c * j] := s
   else iterRange (tbmvTLowerStep d k A x) 0 n x.data
 
 public theorem tbmvTLowerData_eq_iterRange (d : Diag) (k : Nat) (A : Mat (k + 1) n) (x : Vec n) :
