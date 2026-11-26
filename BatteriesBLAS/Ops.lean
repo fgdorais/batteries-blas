@@ -7,13 +7,13 @@ module
 /-!
 # The operations of the `blas%` notation
 
-`blas%` (in `BLAS.Notation`) reads an update such as `y := α • A * x + β • y` and expands it to a
-single call of one of the classes below, such as `MulAdd.run α A x β y`. Each instance of a class
-is one routine of the library, for one kind of operand: `MulAdd` on a matrix and a vector is
+`blas%` (in `BatteriesBLAS.Notation`) reads an update such as `y := α • A * x + β • y` and expands
+it to a single call of one of the classes below, such as `MulAdd.run α A x β y`. Each instance of a
+class is one routine of the library, for one kind of operand: `MulAdd` on a matrix and a vector is
 `gemv`, on a transposed matrix and a vector `gemvT`, on two matrices `gemm`, and on transposes
-`gemmTN`, `gemmNT` and `gemmTT`, on a symmetric view `symv` or `symm`, and over a triangle
-`gemmtr`. An update that no instance covers, such as `Aᵀ * x` with the wrong sizes, is a type class
-error at compile time, never a slower combination of routines.
+`gemmTN`, `gemmNT` and `gemmTT`, on a symmetric view `symv` or `symm`, and over a triangle `gemmtr`.
+An update that no instance covers, such as `Aᵀ * x` with the wrong sizes, is a type class error at
+compile time, never a slower combination of routines.
 
 `MulAcc`, `RankKAcc` and `Rank2KAcc` are the updates with `β = 1`: an instance of `MulAdd`, `RankK`
 or `Rank2K` gives one, and the routines with no `β`, `ger`, `syr` and `syr2`, have their own.
