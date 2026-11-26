@@ -9,7 +9,7 @@ leanOptions = { linter.missingDocs = true, linter.extra = true }
 [[require]]
 name = "lean4-scalar-arrays"
 git = "https://github.com/fgdorais/lean4-scalar-arrays"
-rev = "v1.3.0"
+rev = "nightly-testing"
 
 # As a Batteries cell, it builds against Batteries: `main` here, `nightly-testing` on the
 # `nightly-testing` branch. The library doesn't import it; `BatteriesBLASCompat` checks that the
@@ -17,7 +17,7 @@ rev = "v1.3.0"
 [[require]]
 name = "batteries"
 git = "https://github.com/leanprover-community/batteries"
-rev = "main"
+rev = "nightly-testing"
 
 [[lean_lib]]
 name = "BatteriesBLAS"
