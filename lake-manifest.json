@@ -21,6 +21,6 @@
    "inputRev": "v2.0.0",
    "inherited": false,
    "configFile": "lakefile.toml"}],
- "name": "«lean4-blas»",
+ "name": "«batteries-blas»",
  "lakeDir": ".lake",
  "fixedToolchain": false}

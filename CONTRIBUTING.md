@@ -1,13 +1,13 @@
 # Contributing
 
-Thanks for your interest in Lean 4 / BLAS. This file collects the conventions the library follows.
+Thanks for your interest in BatteriesBLAS. This file collects the conventions the library follows.
 When in doubt, copy what the code nearby already does.
 
 ## Building and testing
 
 ```sh
 lake build --wfail   # the library, the tests and the benchmarks, with warnings as errors
-lake test            # the `#guard` tests in `BLASTest`
+lake test            # the `#guard` tests in `BatteriesBLASTest`
 lake exe bench       # the benchmarks, when a change may affect speed
 ```
 
@@ -29,8 +29,9 @@ speed on the others. No change may alter the Reference BLAS order of operations.
 ## Generated files
 
 The `Float32` routines, tests and benchmarks are generated from the `Float64` versions. Edit only
-the templates, `BLAS/Float64.lean`, `BLAS/Float64/`, `BLASTest/Float64.lean`, `BLASTest/Float64/`
-and `BLASBench/Float64.lean`, then regenerate the `Float32` files:
+the templates, `BatteriesBLAS/Float64.lean`, `BatteriesBLAS/Float64/`,
+`BatteriesBLASTest/Float64.lean`, `BatteriesBLASTest/Float64/` and
+`BatteriesBLASBench/Float64.lean`, then regenerate the `Float32` files:
 
 ```sh
 python3 scripts/generate.py           # regenerate
@@ -41,9 +42,10 @@ Text that depends on the precision, such as the constants of `nrm2` and test tol
 the `SPECIFIC` table of the script, which fails if such text is left over. `Float` becomes
 `Float32`, two columns longer, so keep template lines that mention `Float` short enough for the
 generated line to fit. Anything that doesn't name an element type, such as the `USize` index
-lemmas, goes in `BLAS/Internal.lean` instead. Routines that mix the two precisions, such as `dsdot`
-and `sdsdot`, are hand-written in `BLAS/Mixed.lean`, with their tests in `BLASTest/Mixed.lean`;
-don't put them under `BLAS/Float32/`, whose untemplated files the script removes.
+lemmas, goes in `BatteriesBLAS/Internal.lean` instead. Routines that mix the two precisions, such
+as `dsdot` and `sdsdot`, are hand-written in `BatteriesBLAS/Mixed.lean`, with their tests in
+`BatteriesBLASTest/Mixed.lean`; don't put them under `BatteriesBLAS/Float32/`, whose untemplated
+files the script removes.
 
 ## Files
 
@@ -53,8 +55,8 @@ don't put them under `BLAS/Float32/`, whose untemplated files the script removes
 - Every public declaration has a docstring (`linter.missingDocs` is on). Use `--` comments to
   explain why the code is the way it is.
 - Mark declarations `public` one at a time, and `@[expose]` only where other modules must unfold
-  the body. `BLAS.Internal` holds private lemmas that are not part of the API; the modules that
-  need them use `import all BLAS.Internal`.
+  the body. `BatteriesBLAS.Internal` holds private lemmas that are not part of the API; the
+  modules that need them use `import all BatteriesBLAS.Internal`.
 - Keep lines to 100 columns, except for Markdown tables and URLs.
 
 ## Lean style
