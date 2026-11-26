@@ -4,7 +4,8 @@
 """
 Generates the `Float32` routines, their tests and their benchmarks from the `Float64` versions.
 
-`Float64.lean` and `Float64/` in `BLAS`, `BLASTest` and `BLASBench` are the templates: make
+`Float64.lean` and `Float64/` in `BatteriesBLAS`, `BatteriesBLASTest` and
+`BatteriesBLASBench` are the templates: make
 changes there, then run this script from anywhere to regenerate the `Float32` files, the root
 import lists and `.gitattributes`, which marks the generated files so that GitHub
 collapses them in diffs.
@@ -26,7 +27,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 # The directories and modules that are templates, relative to the repository root.
-LIBS = ['BLAS', 'BLASTest', 'BLASBench']
+LIBS = ['BatteriesBLAS', 'BatteriesBLASTest', 'BatteriesBLASBench']
 
 # Precision-dependent text: each entry is the `Float64` text and its `Float32` translation, which
 # replaces it before the mechanical translation. An entry need not occur in the templates: the

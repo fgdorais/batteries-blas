@@ -1,6 +1,6 @@
-name = "«lean4-blas»"
-defaultTargets = ["BLAS", "BLASTest", "bench"]
-testDriver = "BLASTest"
+name = "batteries-blas"
+defaultTargets = ["BatteriesBLAS", "BatteriesBLASTest", "BatteriesBLASCompat", "bench"]
+testDriver = "BatteriesBLASTest"
 
 # Linters that are off by default.
 leanOptions = { linter.missingDocs = true, linter.extra = true }
@@ -11,10 +11,18 @@ name = "lean4-scalar-arrays"
 git = "https://github.com/fgdorais/lean4-scalar-arrays"
 rev = "v2.0.0"
 
+# As a Batteries cell, it builds against Batteries: `main` here, `nightly-testing` on the
+# `nightly-testing` branch. The library doesn't import it; `BatteriesBLASCompat` checks that the
+# two can be imported together.
+[[require]]
+name = "batteries"
+git = "https://github.com/leanprover-community/batteries"
+rev = "main"
+
 [[lean_lib]]
-name = "BLAS"
-# `BLAS.Notation` is not imported by the root `BLAS`, so it needs its own glob.
-globs = ["BLAS", "BLAS.Notation"]
+name = "BatteriesBLAS"
+# `BatteriesBLAS.Notation` is not imported by the root `BatteriesBLAS`, so it needs its own glob.
+globs = ["BatteriesBLAS", "BatteriesBLAS.Notation"]
 # Lets the interpreter run scalar-arrays' `extern` C code in downstream files, for `#eval` and
 # `#guard`.
 precompileModules = true
@@ -22,17 +30,22 @@ precompileModules = true
 moreLeancArgs = ["-falign-loops=64"]
 
 [[lean_lib]]
-name = "BLASTest"
+name = "BatteriesBLASTest"
 precompileModules = true
+
+# Imports Batteries together with all of `BatteriesBLAS`, so that a clash of names fails the build.
+# Not precompiled, so that Batteries isn't compiled to a shared library.
+[[lean_lib]]
+name = "BatteriesBLASCompat"
 
 # The modules of the `bench` exe, other than its root.
 [[lean_lib]]
-name = "BLASBenchLib"
-globs = ["BLASBench.+"]
+name = "BatteriesBLASBenchLib"
+globs = ["BatteriesBLASBench.+"]
 moreLeancArgs = ["-falign-loops=64"]
 
 [[lean_exe]]
 name = "bench"
-root = "BLASBench"
-# As for `BLAS`, since the benchmarked loops are mostly inlined here.
+root = "BatteriesBLASBench"
+# As for `BatteriesBLAS`, since the benchmarked loops are mostly inlined here.
 moreLeancArgs = ["-falign-loops=64"]

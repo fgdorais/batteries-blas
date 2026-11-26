@@ -9,5 +9,5 @@ name = "doc-gen4"
 rev = "main"
 
 [[require]]
-name = "lean4-blas"
+name = "batteries-blas"
 path = ".."

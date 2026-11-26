@@ -3,7 +3,8 @@ name: CI Pipeline
 # Pushes to a pull request are tested on Linux x86_64 only, unless the pull request has the
 # `full-ci` label. The merge queue and manual runs test on every platform, so every platform is
 # tested before anything reaches `main`. The `CI` job sums up the others: it is the one check that
-# the merge queue requires.
+# the merge queue requires. A toolchain update from `update-main-toolchain.yml` is tested on every
+# platform and then merged, as in the Batteries cell template.
 on:
   pull_request:
     branches: [ "main", "nightly-testing" ]
@@ -19,6 +20,7 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       full: ${{ github.event_name != 'pull_request' ||
+        github.head_ref == 'update-main-toolchain' ||
         contains(github.event.pull_request.labels.*.name, 'full-ci') }}
 
   ci:
@@ -30,3 +32,19 @@ jobs:
       - name: check the results
         if: needs.run-ci.result != 'success'
         run: exit 1
+
+  auto-merge-toolchain-update:
+    needs: run-ci
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'update-main-toolchain' &&
+      github.base_ref == 'main' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge toolchain update
+        env:
+          GH_TOKEN: ${{ secrets.BATTERIES_CELL_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: gh pr merge "$PR_URL" --squash --match-head-commit "$HEAD_SHA"
