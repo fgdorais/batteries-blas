@@ -15,6 +15,13 @@ matrices with an offset and a leading dimension, as well as the mixed-precision 
 `sdsdot`. The `Float32` routines are in the namespace `BLAS.Float32`, with the same names and
 specifications as those of `BLAS.Float64`, on `Float32Array`.
 
+On complex vectors, `BLAS.ComplexFloat64.Vec n` and `BLAS.ComplexFloat32.Vec n`, it has the Level 1
+routines `axpy`, `scal`, `rscal` (`zdscal`), `copy`, `swap`, `dotu`, `dotc`, `asum`, `nrm2`,
+`iamax`, `rot` (`zdrot`) and `rotg`, on elements of type `ComplexFloat` and `ComplexFloat32` from
+[batteries-complex-float](https://github.com/fgdorais/batteries-complex-float). A complex vector
+stores its elements interleaved in a `Float64Array` (or `Float32Array`), the real part of each
+element followed by its imaginary part, as Fortran and C do; its offset and stride count elements.
+
 ## Usage
 
 ```lean
@@ -288,6 +295,14 @@ the other columns `k` in increasing order, reading `A[k, j]` from the triangle.
 from the products of the elements converted to `Float64`, and `sdsdot sb x y` adds it to `sb` in
 `Float64` and rounds the sum to `Float32`, as the reference `dsdot` and `sdsdot` do.
 
+The complex routines compute as the reference BLAS does when gfortran compiles it with its usual
+flags, not with the arithmetic of `ComplexFloat`: a product is the textbook formula
+`(a.re * b.re - a.im * b.im, a.re * b.im + a.im * b.re)` (`BLAS.ComplexFloat64.mul`), a real
+times a complex number scales both parts, and `dotc` multiplies by the conjugate with its negated
+imaginary part. `asum` and `iamax` use `|re| + |im|`, `nrm2` is Blue's algorithm on the real
+part and then the imaginary part of each element, and `rotg` is the `zrotg` of `master`. They were
+checked bit for bit against the Netlib BLAS compiled with gfortran `-O2`.
+
 ## Conformance
 
 The target is the behavior of the reference BLAS, as in the current `master` branch of
@@ -380,8 +395,9 @@ Benchmarks workflow from the Actions tab.
 
 The `Float32` sources, tests and benchmarks, in `BatteriesBLAS/Float32/`,
 `BatteriesBLASTest/Float32/` and `BatteriesBLASBench/Float32.lean`, are generated from the `Float64`
-versions. Make changes in `BatteriesBLAS/Float64/`, `BatteriesBLASTest/Float64/` and
-`BatteriesBLASBench/Float64.lean`, then regenerate the `Float32` files:
+versions, and the `ComplexFloat32` ones from `ComplexFloat64`. Make changes in
+`BatteriesBLAS/Float64/`, `BatteriesBLAS/ComplexFloat64/`, the matching test directories and
+`BatteriesBLASBench/Float64.lean`, then regenerate the single-precision files:
 
 ```bash
 python3 scripts/generate.py

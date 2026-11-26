@@ -83,6 +83,19 @@ Changes that would reorder them, such as partial sums in `dot`, `asum` and `nrm2
   non-`NaN` floats, no comparison with `NaN` is true, and `|x|` is `NaN` only when `x` is. Propose
   them to core, for `Float` and `Float32`.
 
+## Complex Level 1
+
+Measured at 1M elements on the cloud Xeon against the Netlib BLAS 3.12.0 (gfortran `-O2`), in ns per
+element: `axpy`, `dotc`, `nrm2`, `scal`, `copy` and `rot` are within 0.9–1.15× of it, and `asum` is
+2.4× faster.
+
+- [ ] `iamax` is 2.2× behind (2.9 against 1.3 ns). The loop is tight; the extra cost is likely the
+  finiteness tests of both parts before the sum. Try a loop specialized for the unscaled case, or
+  the independent running maxima above.
+- [ ] `rot` makes two passes, one over the real parts and one over the imaginary parts; one pass
+  over both would touch memory once.
+- [ ] `copy` of contiguous vectors could copy the whole range at once.
+
 ## Level 2 (0.9–1.3× at 1024 and 2048, 1.2–1.8× at 256)
 
 - [x] `trmvT`: four elements per pass, which share the reads of `x`, each with its terms in their

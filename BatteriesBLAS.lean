@@ -8,6 +8,8 @@ public import ScalarArray
 public import ScalarArray.Notation
 public import BatteriesBLAS.Float64
 public import BatteriesBLAS.Float32
+public import BatteriesBLAS.ComplexFloat64
+public import BatteriesBLAS.ComplexFloat32
 public import BatteriesBLAS.Mixed
 
 /-!
