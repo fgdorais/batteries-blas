@@ -22,7 +22,7 @@ jobs:
 
       - name: Build Docs
         working-directory: docs
-        run: lake build --keep-toolchain BLAS:docs
+        run: lake build --keep-toolchain BatteriesBLAS:docs
 
       # GitHub Pages serves the `docs` branch. The generated files are ignored on `main`, hence
       # `-f`.

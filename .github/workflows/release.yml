@@ -23,7 +23,7 @@ jobs:
 
       - name: Build Docs
         working-directory: docs
-        run: lake build --keep-toolchain BLAS:docs
+        run: lake build --keep-toolchain BatteriesBLAS:docs
 
       - name: Compress Docs
         working-directory: docs

@@ -1,0 +1,780 @@
+/-
+Copyright © 2026 François G. Dorais. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+-/
+module
+
+public import BatteriesBLAS.Float64.Vec
+public import BatteriesBLAS.Float64.Loop
+public import ScalarArray.Notation
+
+/-!
+# Level 1
+
+Vector operations: the updates `axpy`, `axpby`, `scal`, `copy` and `swap`, and the reductions
+`dot`, `asum`, `nrm2` and `iamax`.
+
+Each routine runs a loop over the `USize` indices `off + inc * i` of its vectors when their arrays'
+sizes fit in a `USize`, as they do for every array in memory, and its model otherwise, so that its
+specification needs no hypothesis on the size. The loops are the same for every stride: at stride
+`1` they run as fast as loops over contiguous indices.
+-/
+
+open ScalarArray Float64Array InPlace
+
+namespace BLAS.Float64
+
+namespace Vec
+
+variable {n : Nat}
+
+/--
+A vector `v` whose array is the array of `w` with the element `i` mapped by `g i`, at the same
+indices, has the elements `g i w[i]`.
+-/
+public theorem getElem_of_data_eq_modifyAt {v w : Vec n} (g : Nat → Float → Float)
+    (hd : v.data = w.data.modifyAt w.stride.idx 0 n g) (ho : v.off = w.off)
+    (hc : v.inc = w.inc) (i : Nat) (h : i < n) : v[i] = g i w[i] := by
+  simp only [getElem_def]
+  have e : v.data[v.off + v.inc * i]'(v.index_lt h) =
+      (w.data.modifyAt w.stride.idx 0 n g)[w.stride.idx i]'(by
+        rw [size_modifyAt]; exact w.index_lt h) := by
+    simp only [hd, ho, hc, idx_stride]
+  rw [e, getElem_modifyAt_stride _ w.fits (Nat.le_refl _) _ (Nat.zero_le _) h]
+  rfl
+
+/--
+The element `i` of a `modifyAt` at the indices of a vector, on an array of the size of the
+vector's array.
+-/
+public theorem getElem_modifyAt_stride (x : Vec n) {a : Float64Array} (ha : a.size = x.data.size)
+    {lo hi : Nat} (hn : hi ≤ n) (g : Nat → Float → Float) {i : Nat} (h₁ : lo ≤ i) (h₂ : i < hi)
+    (h : x.off + x.inc * i < (a.modifyAt x.stride.idx lo hi g).size) :
+    (a.modifyAt x.stride.idx lo hi g)[x.off + x.inc * i] =
+      g i (a[x.off + x.inc * i]'(by simpa using h)) :=
+  Float64Array.getElem_modifyAt_stride a (by rw [ha]; exact x.fits) hn g h₁ h₂
+
+/-- The number of elements `n` as a `USize`, in a vector whose array has a `USize` size. -/
+public theorem toNat_toUSize (x : Vec n) (hs : x.data.size < USize.size) : n.toUSize.toNat = n := by
+  have := x.le_size
+  grind
+
+/-- The `USize` indices of the loop of a vector update, from the step `0`, don't wrap. -/
+public theorem loop_idx (x : Vec n) (hs : x.data.size < USize.size) :
+    ∀ j : USize, (0 : USize).toNat ≤ j.toNat → j.toNat < n.toUSize.toNat →
+      (x.off.toUSize + x.inc.toUSize * j).toNat = x.stride.idx j.toNat := by
+  rw [x.toNat_toUSize hs]
+  exact fun j _ hj => x.toNat_index hs hj
+
+/-- The array of `axpy`. -/
+public def axpyData (α : Float) (x y : Vec n) : Float64Array :=
+  if hs : x.data.size < USize.size ∧ y.data.size < USize.size then
+    let nu := n.toUSize
+    have hnu : nu.toNat = n := y.toNat_toUSize hs.2
+    let a := y.data
+    let o := y.off.toUSize
+    let c := y.inc.toUSize
+    let xo := x.off.toUSize
+    let xc := x.inc.toUSize
+    inplace a do
+      for k in 0...nu do
+        have hk : (o + c * k).toNat < a.size := y.toNat_index_lt hs.2 (by lia)
+        a[o + c * k] := α * x.uget xo xc rfl rfl hs.1 k (by lia) + a[o + c * k]
+  else y.data.modifyAt y.stride.idx 0 n fun i v => α * x.data[x.off + x.inc * i]! + v
+
+public theorem axpyData_eq (α : Float) (x y : Vec n) :
+    axpyData α x y = y.data.modifyAt y.stride.idx 0 n
+      fun i v => α * x.data[x.off + x.inc * i]! + v := by
+  unfold axpyData
+  split
+  · rename_i hs
+    have he := y.loop_idx hs.2
+    simp only [runInPlaceThenOf_eq, Tail.forIn_eq]
+    rw [Tail.run_forInFrom_modify (G := fun i v => α * x.data[x.off + x.inc * i]! + v) (he := he)]
+    · simp only [Tail.run_done, y.toNat_toUSize hs.2, USize.toNat_zero]
+    · intro j _ hj v
+      rw [y.toNat_toUSize hs.2] at hj
+      rw [getElem!_pos x.data (x.off + x.inc * j.toNat) (x.index_lt hj)]
+      simp [getElem_def]
+  · rfl
+
+/--
+`axpy α x y` is `α * x + y`. As in the reference BLAS, it returns `y` when `α = 0`, without
+reading `x`, so an infinity or a `NaN` in `x` doesn't reach `y`. It updates `y` in place when its
+array is not shared, and leaves the elements of the array outside `y` unchanged.
+-/
+@[expose] public def axpy (α : Float) (x y : Vec n) : Vec n :=
+  if α == 0 then y
+  else
+    { data := axpyData α x y
+      off := y.off
+      inc := y.inc
+      inc_pos := y.inc_pos
+      bound := by rw [axpyData_eq, size_modifyAt]; exact y.bound }
+
+/-- The array of `axpy α x y` is the array of `y` with its elements updated. -/
+public theorem data_axpy (α : Float) (x y : Vec n) :
+    (axpy α x y).data = y.data.modifyAt y.stride.idx 0 n
+      fun i v => if α == 0 then v else α * x.data[x.off + x.inc * i]! + v := by
+  unfold axpy
+  cases h : α == 0 <;> simp [axpyData_eq, modifyAt_id]
+
+@[simp] public theorem off_axpy (α : Float) (x y : Vec n) : (axpy α x y).off = y.off := by
+  unfold axpy; split <;> rfl
+
+@[simp] public theorem inc_axpy (α : Float) (x y : Vec n) : (axpy α x y).inc = y.inc := by
+  unfold axpy; split <;> rfl
+
+@[simp] public theorem getElem_axpy (α : Float) (x y : Vec n) (i : Nat) (h : i < n) :
+    (axpy α x y)[i] = if α == 0 then y[i] else α * x[i] + y[i] := by
+  rw [getElem_of_data_eq_modifyAt _ (data_axpy α x y) (off_axpy α x y) (inc_axpy α x y) i h,
+    getElem!_pos x.data (x.off + x.inc * i) (x.index_lt h)]
+  rfl
+
+
+/-- The array of `scal`. -/
+public def scalData (α : Float) (x : Vec n) : Float64Array :=
+  if hs : x.data.size < USize.size then
+    let nu := n.toUSize
+    have hnu : nu.toNat = n := x.toNat_toUSize hs
+    let a := x.data
+    let o := x.off.toUSize
+    let c := x.inc.toUSize
+    inplace a do
+      for k in 0...nu do
+        have hk : (o + c * k).toNat < a.size := x.toNat_index_lt hs (by lia)
+        a[o + c * k] := α * a[o + c * k]
+  else x.data.modifyAt x.stride.idx 0 n fun _ v => α * v
+
+public theorem scalData_eq (α : Float) (x : Vec n) :
+    scalData α x = x.data.modifyAt x.stride.idx 0 n fun _ v => α * v := by
+  unfold scalData
+  split
+  · rename_i hs
+    have he := x.loop_idx hs
+    simp only [runInPlaceThenOf_eq, Tail.forIn_eq]
+    rw [Tail.run_forInFrom_modify (G := fun _ v => α * v) (he := he)]
+    · simp only [Tail.run_done, x.toNat_toUSize hs, USize.toNat_zero]
+    · intro _ _ _ _; rfl
+  · rfl
+
+/--
+`scal α x` is `α * x`. It updates `x` in place when its array is not shared, and leaves the
+elements of the array outside `x` unchanged.
+-/
+@[expose] public def scal (α : Float) (x : Vec n) : Vec n where
+  data := scalData α x
+  off := x.off
+  inc := x.inc
+  inc_pos := x.inc_pos
+  bound := by rw [scalData_eq, size_modifyAt]; exact x.bound
+
+/-- The array of `scal α x` is the array of `x` with its elements updated. -/
+public theorem data_scal (α : Float) (x : Vec n) :
+    (scal α x).data = x.data.modifyAt x.stride.idx 0 n fun _ v => α * v :=
+  scalData_eq α x
+
+@[simp] public theorem off_scal (α : Float) (x : Vec n) : (scal α x).off = x.off := rfl
+
+@[simp] public theorem inc_scal (α : Float) (x : Vec n) : (scal α x).inc = x.inc := rfl
+
+@[simp] public theorem getElem_scal (α : Float) (x : Vec n) (i : Nat) (h : i < n) :
+    (scal α x)[i] = α * x[i] :=
+  getElem_of_data_eq_modifyAt _ (data_scal α x) rfl rfl i h
+
+/--
+The array of `x` scaled by `betaMul β`, as the reference BLAS scales `y` in `gemv`: by `β`, or set
+to `0` without reading it when `β = 0`.
+-/
+public def scalBetaData (β : Float) (x : Vec n) : Float64Array :=
+  if hs : x.data.size < USize.size then
+    let nu := n.toUSize
+    have hnu : nu.toNat = n := x.toNat_toUSize hs
+    let a := x.data
+    let o := x.off.toUSize
+    let c := x.inc.toUSize
+    inplace a do
+      for k in 0...nu do
+        have hk : (o + c * k).toNat < a.size := x.toNat_index_lt hs (by lia)
+        a[o + c * k] := betaMul β a[o + c * k]
+  else x.data.modifyAt x.stride.idx 0 n fun _ v => betaMul β v
+
+public theorem scalBetaData_eq (β : Float) (x : Vec n) :
+    scalBetaData β x = x.data.modifyAt x.stride.idx 0 n fun _ v => betaMul β v := by
+  unfold scalBetaData
+  split
+  · rename_i hs
+    have he := x.loop_idx hs
+    simp only [runInPlaceThenOf_eq, Tail.forIn_eq]
+    rw [Tail.run_forInFrom_modify (G := fun _ v => betaMul β v) (he := he)]
+    · simp only [Tail.run_done, x.toNat_toUSize hs, USize.toNat_zero]
+    · intro _ _ _ _; rfl
+  · rfl
+
+/-! ## `axpby` -/
+
+/-- The array of `axpby` when `β = 0`: `y` set to `α * x`, without reading `y`. -/
+public def axpbyZeroData (α : Float) (x y : Vec n) : Float64Array :=
+  if hs : x.data.size < USize.size ∧ y.data.size < USize.size then
+    let nu := n.toUSize
+    have hnu : nu.toNat = n := y.toNat_toUSize hs.2
+    let a := y.data
+    let o := y.off.toUSize
+    let c := y.inc.toUSize
+    let xo := x.off.toUSize
+    let xc := x.inc.toUSize
+    inplace a do
+      for k in 0...nu do
+        have hk : (o + c * k).toNat < a.size := y.toNat_index_lt hs.2 (by lia)
+        a[o + c * k] := α * x.uget xo xc rfl rfl hs.1 k (by lia)
+  else y.data.modifyAt y.stride.idx 0 n fun i _ => α * x.data[x.off + x.inc * i]!
+
+public theorem axpbyZeroData_eq (α : Float) (x y : Vec n) :
+    axpbyZeroData α x y = y.data.modifyAt y.stride.idx 0 n
+      fun i _ => α * x.data[x.off + x.inc * i]! := by
+  unfold axpbyZeroData
+  split
+  · rename_i hs
+    have he := y.loop_idx hs.2
+    simp only [runInPlaceThenOf_eq, Tail.forIn_eq]
+    rw [Tail.run_forInFrom_write (G := fun i => α * x.data[x.off + x.inc * i]!) (he := he)]
+    · simp only [Tail.run_done, y.toNat_toUSize hs.2, USize.toNat_zero]
+    · intro j _ hj
+      rw [y.toNat_toUSize hs.2] at hj
+      rw [getElem!_pos x.data (x.off + x.inc * j.toNat) (x.index_lt hj)]
+      simp [getElem_def]
+  · rfl
+
+/-- The array of `axpby` when `α ≠ 0` and `β ≠ 0`: `y` set to `α * x + β * y`. -/
+public def axpbyData (α : Float) (x : Vec n) (β : Float) (y : Vec n) : Float64Array :=
+  if hs : x.data.size < USize.size ∧ y.data.size < USize.size then
+    let nu := n.toUSize
+    have hnu : nu.toNat = n := y.toNat_toUSize hs.2
+    let a := y.data
+    let o := y.off.toUSize
+    let c := y.inc.toUSize
+    let xo := x.off.toUSize
+    let xc := x.inc.toUSize
+    inplace a do
+      for k in 0...nu do
+        have hk : (o + c * k).toNat < a.size := y.toNat_index_lt hs.2 (by lia)
+        a[o + c * k] := α * x.uget xo xc rfl rfl hs.1 k (by lia) + β * a[o + c * k]
+  else y.data.modifyAt y.stride.idx 0 n fun i v => α * x.data[x.off + x.inc * i]! + β * v
+
+public theorem axpbyData_eq (α : Float) (x : Vec n) (β : Float) (y : Vec n) :
+    axpbyData α x β y = y.data.modifyAt y.stride.idx 0 n
+      fun i v => α * x.data[x.off + x.inc * i]! + β * v := by
+  unfold axpbyData
+  split
+  · rename_i hs
+    have he := y.loop_idx hs.2
+    simp only [runInPlaceThenOf_eq, Tail.forIn_eq]
+    rw [Tail.run_forInFrom_modify (G := fun i v => α * x.data[x.off + x.inc * i]! + β * v)
+      (he := he)]
+    · simp only [Tail.run_done, y.toNat_toUSize hs.2, USize.toNat_zero]
+    · intro j _ hj v
+      rw [y.toNat_toUSize hs.2] at hj
+      rw [getElem!_pos x.data (x.off + x.inc * j.toNat) (x.index_lt hj)]
+      simp [getElem_def]
+  · rfl
+
+/--
+The value of `axpby α x β y` at an element, from the elements `u` of `x` and `v` of `y`, with the
+special cases of OpenBLAS's `daxpby`: `betaMul β v` when `α = 0`, without reading `u`, and
+`α * u` when `β = 0`, without reading `v`.
+-/
+@[expose] public def axpbyAt (α β u v : Float) : Float :=
+  if α == 0 then betaMul β v else if β == 0 then α * u else α * u + β * v
+
+/--
+`axpby α x β y` is `α * x + β * y`. It is not a routine of the reference BLAS, but of the BLAS
+Technical Forum standard and of OpenBLAS, whose `daxpby` it follows, special cases included: when
+`α = 0`, it scales `y` by `β`, or sets it to `0` when `β = 0`, without reading `x`; when `β = 0`, it
+sets `y` to `α * x` without reading `y`. So an infinity or a `NaN` in the operand that is not read
+doesn't reach `y`. It updates `y` in place when its array is not shared, and leaves the elements
+of the array outside `y` unchanged.
+-/
+@[expose] public def axpby (α : Float) (x : Vec n) (β : Float) (y : Vec n) : Vec n :=
+  if α == 0 then
+    { data := y.scalBetaData β
+      off := y.off
+      inc := y.inc
+      inc_pos := y.inc_pos
+      bound := by rw [scalBetaData_eq, size_modifyAt]; exact y.bound }
+  else if β == 0 then
+    { data := axpbyZeroData α x y
+      off := y.off
+      inc := y.inc
+      inc_pos := y.inc_pos
+      bound := by rw [axpbyZeroData_eq, size_modifyAt]; exact y.bound }
+  else
+    { data := axpbyData α x β y
+      off := y.off
+      inc := y.inc
+      inc_pos := y.inc_pos
+      bound := by rw [axpbyData_eq, size_modifyAt]; exact y.bound }
+
+/-- The array of `axpby α x β y` is the array of `y` with its elements updated. -/
+public theorem data_axpby (α : Float) (x : Vec n) (β : Float) (y : Vec n) :
+    (axpby α x β y).data = y.data.modifyAt y.stride.idx 0 n
+      fun i v => axpbyAt α β x.data[x.off + x.inc * i]! v := by
+  unfold axpby
+  cases hα : α == 0
+  · cases hβ : β == 0
+    · simp only [Bool.false_eq_true, ↓reduceIte, axpbyData_eq]
+      exact modifyAt_congr_fun _ _ fun i v _ _ => by simp [axpbyAt, hα, hβ]
+    · simp only [Bool.false_eq_true, ↓reduceIte, axpbyZeroData_eq]
+      exact modifyAt_congr_fun _ _ fun i v _ _ => by simp [axpbyAt, hα, hβ]
+  · simp only [↓reduceIte, scalBetaData_eq]
+    exact modifyAt_congr_fun _ _ fun i v _ _ => by simp [axpbyAt, hα]
+
+@[simp] public theorem off_axpby (α : Float) (x : Vec n) (β : Float) (y : Vec n) :
+    (axpby α x β y).off = y.off := by
+  unfold axpby; split <;> (try split) <;> rfl
+
+@[simp] public theorem inc_axpby (α : Float) (x : Vec n) (β : Float) (y : Vec n) :
+    (axpby α x β y).inc = y.inc := by
+  unfold axpby; split <;> (try split) <;> rfl
+
+/--
+Element `i` of `axpby α x β y` is `betaMul β y[i]` when `α = 0`, `α * x[i]` when `β = 0`, and
+`α * x[i] + β * y[i]` otherwise.
+-/
+@[simp] public theorem getElem_axpby (α : Float) (x : Vec n) (β : Float) (y : Vec n) (i : Nat)
+    (h : i < n) : (axpby α x β y)[i] = axpbyAt α β x[i] y[i] := by
+  rw [getElem_of_data_eq_modifyAt _ (data_axpby α x β y) (off_axpby α x β y)
+    (inc_axpby α x β y) i h, getElem!_pos x.data (x.off + x.inc * i) (x.index_lt h)]
+  rfl
+
+/--
+The array of `copy`: a single `memmove` for contiguous vectors, and a loop over the strides
+otherwise.
+-/
+public def copyData (x y : Vec n) : Float64Array :=
+  if x.inc = 1 ∧ y.inc = 1 then x.data.copySlice x.off y.data y.off n
+  else if hs : x.data.size < USize.size ∧ y.data.size < USize.size then
+    let nu := n.toUSize
+    have hnu : nu.toNat = n := y.toNat_toUSize hs.2
+    let a := y.data
+    let o := y.off.toUSize
+    let c := y.inc.toUSize
+    let xo := x.off.toUSize
+    let xc := x.inc.toUSize
+    inplace a do
+      for k in 0...nu do
+        have hk : (o + c * k).toNat < a.size := y.toNat_index_lt hs.2 (by lia)
+        a[o + c * k] := x.uget xo xc rfl rfl hs.1 k (by lia)
+  else y.data.modifyAt y.stride.idx 0 n fun i _ => x.data[x.off + x.inc * i]!
+
+public theorem copyData_eq (x y : Vec n) :
+    copyData x y = y.data.modifyAt y.stride.idx 0 n
+      fun i _ => x.data[x.off + x.inc * i]! := by
+  unfold copyData
+  split
+  · rename_i hc
+    rcases Nat.eq_zero_or_pos n with h₀ | h₀
+    · subst h₀
+      rw [modifyAt_self]
+      apply ext_getElem (by simp [size_copySlice]; lia)
+      intro p _ _
+      rw [getElem_copySlice]
+      split
+      · rfl
+      · rw [dite_eq_right (by lia)]
+    · have hw : ∀ v : Vec n, v.inc = 1 → v.off + n ≤ v.data.size := by
+        intro v h
+        have := v.index_lt (i := n - 1) (by lia); simp [h] at this; lia
+      rw [copySlice_eq_modifyAt _ _ _ _ _ _ (hw x hc.1) (hw y hc.2)]
+      exact modifyAt_congr _ (fun i _ _ => by simp [idx_stride, hc.2])
+        (fun i _ _ => by simp [hc.1])
+  split
+  · rename_i hs
+    have he := y.loop_idx hs.2
+    simp only [runInPlaceThenOf_eq, Tail.forIn_eq]
+    rw [Tail.run_forInFrom_write (G := fun i => x.data[x.off + x.inc * i]!) (he := he)]
+    · simp only [Tail.run_done, y.toNat_toUSize hs.2, USize.toNat_zero]
+    · intro j _ hj
+      rw [y.toNat_toUSize hs.2] at hj
+      rw [getElem!_pos x.data (x.off + x.inc * j.toNat) (x.index_lt hj)]
+      simp [getElem_def]
+  · rfl
+
+/--
+`copy x y` is `x`, written over `y`, in place when the array of `y` is not shared. It leaves the
+elements of the array outside `y` unchanged.
+-/
+@[expose] public def copy (x y : Vec n) : Vec n where
+  data := copyData x y
+  off := y.off
+  inc := y.inc
+  inc_pos := y.inc_pos
+  bound := by rw [copyData_eq, size_modifyAt]; exact y.bound
+
+/-- The array of `copy x y` is the array of `y` with its elements replaced. -/
+public theorem data_copy (x y : Vec n) :
+    (copy x y).data = y.data.modifyAt y.stride.idx 0 n
+      fun i _ => x.data[x.off + x.inc * i]! :=
+  copyData_eq x y
+
+@[simp] public theorem off_copy (x y : Vec n) : (copy x y).off = y.off := rfl
+
+@[simp] public theorem inc_copy (x y : Vec n) : (copy x y).inc = y.inc := rfl
+
+@[simp] public theorem getElem_copy (x y : Vec n) (i : Nat) (h : i < n) :
+    (copy x y)[i] = x[i] := by
+  rw [getElem_of_data_eq_modifyAt _ (data_copy x y) rfl rfl i h,
+    getElem!_pos x.data (x.off + x.inc * i) (x.index_lt h)]
+  rfl
+
+/-- `swap x y` is `(y, x)`. Nothing is copied. -/
+public def swap (x y : Vec n) : Vec n × Vec n := (y, x)
+
+@[simp] public theorem swap_fst (x y : Vec n) : (swap x y).1 = y := by simp [swap]
+
+@[simp] public theorem swap_snd (x y : Vec n) : (swap x y).2 = x := by simp [swap]
+
+/-- The dot product `x[0] * y[0] + … + x[n - 1] * y[n - 1]`, summed from the left. -/
+public def dot (x y : Vec n) : Float :=
+  if hs : x.data.size < USize.size ∧ y.data.size < USize.size then
+    let xo := x.off.toUSize
+    let xc := x.inc.toUSize
+    let yo := y.off.toUSize
+    let yc := y.inc.toUSize
+    foldUpTo n (fun i h s => s + x[i] * y[i])
+      (fun i h s => s + x.uget xo xc rfl rfl hs.1 i h * y.uget yo yc rfl rfl hs.2 i h) 0
+  else Nat.fold n (fun i h s => s + x[i] * y[i]) 0
+
+public theorem dot_eq (x y : Vec n) :
+    dot x y = Nat.fold n (fun i h s => s + x[i] * y[i]) 0 := by
+  unfold dot; split
+  · exact foldUpTo_eq _ _ _ (by simp) _
+  · rfl
+
+/-- The sum of the absolute values `|x[0]| + … + |x[n - 1]|`, summed from the left. -/
+public def asum (x : Vec n) : Float :=
+  if hs : x.data.size < USize.size then
+    let xo := x.off.toUSize
+    let xc := x.inc.toUSize
+    foldUpTo n (fun i h s => s + x[i].abs) (fun i h s => s + (x.uget xo xc rfl rfl hs i h).abs) 0
+  else Nat.fold n (fun i h s => s + x[i].abs) 0
+
+public theorem asum_eq (x : Vec n) :
+    asum x = Nat.fold n (fun i h s => s + x[i].abs) 0 := by
+  unfold asum; split
+  · exact foldUpTo_eq _ _ _ (by simp) _
+  · rfl
+
+/-! ## `nrm2` -/
+
+/-!
+`nrm2` computes the Euclidean norm by Blue's algorithm, as in the reference BLAS (`dnrm2.f90`,
+since LAPACK 3.10): it sums the squares in three accumulators, of the small elements scaled up, of
+the mid-range elements, and of the big elements scaled down, so that no sum overflows or underflows
+unless the norm itself does. The thresholds and scaling factors are powers of `2`, so that scaling
+is exact.
+-/
+
+end Vec
+
+namespace Blue
+
+/-- The threshold for small elements, `2 ^ (-511)`: their squares may underflow. -/
+@[expose] public def tsml : Float := Float.ofBits 0x2000000000000000
+
+/-- The threshold for big elements, `2 ^ 486`: their squares may overflow when summed. -/
+@[expose] public def tbig : Float := Float.ofBits 0x5E50000000000000
+
+/-- The factor that scales up the small elements, `2 ^ 537`. -/
+@[expose] public def ssml : Float := Float.ofBits 0x6180000000000000
+
+/-- The factor that scales down the big elements, `2 ^ (-538)`. -/
+@[expose] public def sbig : Float := Float.ofBits 0x1E50000000000000
+
+/-- The largest finite `Float`. -/
+@[expose] public def maxN : Float := Float.ofBits 0x7FEFFFFFFFFFFFFF
+
+end Blue
+
+namespace Vec
+
+/--
+One step of `nrm2`: it adds the square of `|x[i]|`, scaled, to the accumulator of its range, in
+the sums `(asml, amed, abig)` of the small, mid-range and big elements.
+
+The reference BLAS stops adding to `asml` after the first big element. That is only a shortcut:
+`asml` is ignored once `abig > 0`, which holds from the first big element on, so the result is the
+same.
+-/
+@[inline, expose] public def nrm2Step (x : Vec n) (i : Nat) (h : i < n)
+    (s : Float × Float × Float) :
+    Float × Float × Float :=
+  let ax := x[i].abs
+  if ax > Blue.tbig then (s.1, s.2.1, s.2.2 + ax * Blue.sbig * (ax * Blue.sbig))
+  else if ax < Blue.tsml then (s.1 + ax * Blue.ssml * (ax * Blue.ssml), s.2.1, s.2.2)
+  else (s.1, s.2.1 + ax * ax, s.2.2)
+
+/--
+The last step of `nrm2`, from the sums `(asml, amed, abig)` of the squares of the small,
+mid-range and big elements, scaled: it combines the two sums that matter, as the reference BLAS
+does, and takes the square root.
+-/
+@[expose] public def nrm2Finish (s : Float × Float × Float) : Float :=
+  let (asml, amed, abig) := s
+  if abig > 0 then
+    let abig := if amed > 0 ∨ amed > Blue.maxN ∨ amed.isNaN then abig + amed * Blue.sbig * Blue.sbig
+      else abig
+    1 / Blue.sbig * abig.sqrt
+  else if asml > 0 then
+    if amed > 0 ∨ amed > Blue.maxN ∨ amed.isNaN then
+      let amed := amed.sqrt
+      let asml := asml.sqrt / Blue.ssml
+      let ymin := if asml > amed then amed else asml
+      let ymax := if asml > amed then asml else amed
+      1 * (ymax * ymax * (1 + ymin / ymax * (ymin / ymax))).sqrt
+    else 1 / Blue.ssml * asml.sqrt
+  else 1 * amed.sqrt
+
+/--
+The loop of `nrm2` from the index `i`, up to the bound `m`, which is `n`, with the sums `asml`,
+`amed` and `abig`. It keeps them in three loop variables rather than a tuple, which would be
+allocated at every step.
+-/
+public def nrm2Loop (x : Vec n) (o c : USize) (ho : x.off.toUSize = o) (hc : x.inc.toUSize = c)
+    (hs : x.data.size < USize.size) (m : USize) (hm : m.toNat = n) (i : USize)
+    (asml amed abig : Float) : Float × Float × Float :=
+  if hi : i < m then
+    let ax := (x.uget o c ho hc hs i (hm ▸ hi)).abs
+    if ax > Blue.tbig then
+      let t := ax * Blue.sbig
+      nrm2Loop x o c ho hc hs m hm (i + 1) asml amed (abig + t * t)
+    else if ax < Blue.tsml then
+      let t := ax * Blue.ssml
+      nrm2Loop x o c ho hc hs m hm (i + 1) (asml + t * t) amed abig
+    else nrm2Loop x o c ho hc hs m hm (i + 1) asml (amed + ax * ax) abig
+  else (asml, amed, abig)
+termination_by m.toNat - i.toNat
+decreasing_by
+  all_goals
+    grind
+
+private theorem nrm2Loop_eq (x : Vec n) (o c : USize) (ho : x.off.toUSize = o)
+    (hc : x.inc.toUSize = c) (hs : x.data.size < USize.size) (m : USize) (hm : m.toNat = n)
+    (i : USize) (asml amed abig : Float) (j : Nat) (hj : i.toNat = j) (hjn : j ≤ n)
+    (hacc : Nat.fold j (fun l hl => nrm2Step x l (by lia)) (0, 0, 0) = (asml, amed, abig)) :
+    nrm2Loop x o c ho hc hs m hm i asml amed abig = Nat.fold n (nrm2Step x) (0, 0, 0) := by
+  obtain ⟨d, hd⟩ : ∃ d, n - j = d := ⟨_, rfl⟩
+  induction d generalizing i asml amed abig j with
+  | zero =>
+    rw [nrm2Loop, dite_eq_right_of_eq_false (eq_false (by grind))]
+    obtain rfl : j = n := by lia
+    rw [hacc]
+  | succ d ih =>
+    have hi : i < m := by grind
+    have hsucc : (i + 1).toNat = j + 1 := by grind
+    have hstep : Nat.fold (j + 1) (fun l hl => nrm2Step x l (by lia)) (0, 0, 0) =
+        nrm2Step x j (by lia) (asml, amed, abig) := by
+      rw [Nat.fold_succ, hacc]
+    rw [nrm2Loop, dite_eq_left_of_eq_true (eq_true hi)]
+    simp only [uget_eq_getElem]
+    subst hj
+    split
+    next hb =>
+      refine ih (i + 1) _ _ _ (i.toNat + 1) hsucc (by lia) ?_ (by lia)
+      rw [hstep]
+      simp only [nrm2Step, hb, ite_true]
+    next hb =>
+      split
+      next hs' =>
+        refine ih (i + 1) _ _ _ (i.toNat + 1) hsucc (by lia) ?_ (by lia)
+        rw [hstep]
+        simp only [nrm2Step, hb, hs', ite_true, ite_false]
+      next hs' =>
+        refine ih (i + 1) _ _ _ (i.toNat + 1) hsucc (by lia) ?_ (by lia)
+        rw [hstep]
+        simp only [nrm2Step, hb, hs', ite_false]
+
+/--
+The Euclidean norm `√(x[0] * x[0] + … + x[n - 1] * x[n - 1])`, by Blue's algorithm, as in the
+reference BLAS: it overflows or underflows only when the norm does. It is `0` for the empty vector,
+a `NaN` if an element is a `NaN`, and otherwise `∞` if an element is infinite.
+-/
+public def nrm2 (x : Vec n) : Float :=
+  nrm2Finish <|
+    if hs : x.data.size < USize.size then
+      nrm2Loop x _ _ rfl rfl hs n.toUSize (x.toNat_toUSize hs) 0 0 0 0
+    else Nat.fold n (nrm2Step x) (0, 0, 0)
+
+/--
+`nrm2 x` is `nrm2Finish` of the sums of the scaled squares, accumulated from the left by
+`nrm2Step`.
+-/
+public theorem nrm2_eq (x : Vec n) : nrm2 x = nrm2Finish (Nat.fold n (nrm2Step x) (0, 0, 0)) := by
+  unfold nrm2
+  split
+  · rw [nrm2Loop_eq x _ _ rfl rfl _ _ _ 0 0 0 0 0 (by simp) (by lia) (by simp)]
+  · rfl
+
+/-! ## `iamax` -/
+
+/--
+One step of `iamax`: the index and absolute value of the first largest element so far, or of the
+first `NaN`. An element replaces the largest so far unless it is `≤` it, so a `NaN` replaces it,
+and nothing replaces a `NaN`.
+-/
+@[inline, expose] public def iamaxStep (x : Vec n) (i : Nat) (h : i < n) (b : Nat × Float) :
+    Nat × Float :=
+  let a := x[i].abs
+  if i = 0 ∨ ¬b.2.isNaN ∧ ¬a ≤ b.2 then (i, a) else b
+
+/--
+The loop of `iamax` from the index `i`, up to the bound `m`, which is `n`, with the index `k` and
+absolute value `a` of the first largest element so far. It keeps them in two loop variables rather
+than a pair, which would be allocated at every new largest element. It returns at the first `NaN`,
+as the reference BLAS does, since nothing replaces it, so it checks for a `NaN` only at a new
+largest element.
+-/
+public def iamaxLoop (x : Vec n) (o c : USize) (ho : x.off.toUSize = o) (hc : x.inc.toUSize = c)
+    (hs : x.data.size < USize.size) (m : USize) (hm : m.toNat = n) (i k : USize) (a : Float) :
+    Nat :=
+  if hi : i < m then
+    let b := (x.uget o c ho hc hs i (hm ▸ hi)).abs
+    if i = 0 ∨ ¬b ≤ a then
+      if b.isNaN then i.toNat else iamaxLoop x o c ho hc hs m hm (i + 1) i b
+    else iamaxLoop x o c ho hc hs m hm (i + 1) k a
+  else k.toNat
+termination_by m.toNat - i.toNat
+decreasing_by
+  all_goals
+    grind
+
+/-- Once the largest element so far is a `NaN`, the steps of `iamax` keep it. -/
+private theorem fold_iamaxStep_of_isNaN (x : Vec n) {j : Nat} (hj : 0 < j) {k : Nat} {a : Float}
+    (ha : a.isNaN = true) (hjn : j ≤ n)
+    (hacc : Nat.fold j (fun l hl => iamaxStep x l (by lia)) (0, 0) = (k, a)) :
+    ∀ N (_ : j ≤ N) (hN : N ≤ n),
+      Nat.fold N (fun l hl => iamaxStep x l (by lia)) (0, 0) = (k, a)
+  | 0, _, _ => by lia
+  | N + 1, hjN, hN => by
+    by_cases e : j = N + 1
+    · subst e; exact hacc
+    · rw [Nat.fold_succ, fold_iamaxStep_of_isNaN x hj ha hjn hacc N (by lia) (by lia)]
+      simp [iamaxStep, ha, show N ≠ 0 by lia]
+
+private theorem iamaxLoop_eq (x : Vec n) (o c : USize) (ho : x.off.toUSize = o)
+    (hc : x.inc.toUSize = c) (hs : x.data.size < USize.size) (m : USize) (hm : m.toNat = n)
+    (i k : USize) (a : Float) (j : Nat) (hj : i.toNat = j) (hjn : j ≤ n)
+    (hnan : j = 0 ∨ a.isNaN = false)
+    (hacc : Nat.fold j (fun l hl => iamaxStep x l (by lia)) (0, 0) = (k.toNat, a)) :
+    iamaxLoop x o c ho hc hs m hm i k a = (Nat.fold n (iamaxStep x) (0, 0)).1 := by
+  obtain ⟨d, hd⟩ : ∃ d, n - j = d := ⟨_, rfl⟩
+  induction d generalizing i k a j with
+  | zero =>
+    rw [iamaxLoop, dite_eq_right_of_eq_false (eq_false (by grind))]
+    obtain rfl : j = n := by lia
+    rw [hacc]
+  | succ d ih =>
+    have hi : i < m := by grind
+    have hsucc : (i + 1).toNat = j + 1 := by grind
+    have hstep : Nat.fold (j + 1) (fun l hl => iamaxStep x l (by lia)) (0, 0) =
+        iamaxStep x j (by lia) (k.toNat, a) := by
+      rw [Nat.fold_succ, hacc]
+    rw [iamaxLoop, dite_eq_left_of_eq_true (eq_true hi)]
+    simp only [uget_eq_getElem]
+    subst hj
+    have hi0 : i = 0 ↔ i.toNat = 0 := by simp [← USize.toNat_inj]
+    split
+    next hc =>
+      have hc' : i.toNat = 0 ∨ ¬a.isNaN ∧ ¬x[i.toNat].abs ≤ a := by
+        rcases hc with hc | hc
+        · exact Or.inl (hi0.1 hc)
+        · rcases hnan with hn | hn
+          · exact Or.inl hn
+          · exact Or.inr ⟨by simp [hn], hc⟩
+      have hnext : Nat.fold (i.toNat + 1) (fun l hl => iamaxStep x l (by lia)) (0, 0) =
+          (i.toNat, x[i.toNat].abs) := by
+        rw [hstep]
+        simp only [iamaxStep, hc', ite_true]
+      split
+      next hb =>
+        rw [fold_iamaxStep_of_isNaN x (Nat.succ_pos _) hb (by lia) hnext n (by lia) (Nat.le_refl _)]
+      next hb =>
+        exact ih (i + 1) i _ (i.toNat + 1) hsucc (by lia) (Or.inr (by simpa using hb)) hnext
+          (by lia)
+    next hc =>
+      have hc' : ¬(i.toNat = 0 ∨ ¬a.isNaN ∧ ¬x[i.toNat].abs ≤ a) := by
+        simp only [not_or, Decidable.not_not] at hc
+        rw [hi0] at hc
+        grind
+      refine ih (i + 1) k a (i.toNat + 1) hsucc (by lia) (Or.inr ?_) ?_ (by lia)
+      · rcases hnan with hn | hn
+        · simp only [not_or] at hc
+          exact absurd (hi0.2 hn) hc.1
+        · exact hn
+      · rw [hstep]
+        simp only [iamaxStep, hc', ite_false]
+
+/--
+The index of the first element of largest absolute value, or of the first `NaN`, as in the
+reference BLAS (after LAPACK 3.12.1, which skips a `NaN` unless it is the first element). Unlike
+the reference BLAS, the index starts at `0`, and it is `0` for the empty vector. `iamax` and
+`iamax?` return the same index as a `Fin n`.
+-/
+public def iamax! (x : Vec n) : Nat :=
+  if hs : x.data.size < USize.size then
+    iamaxLoop x _ _ rfl rfl hs n.toUSize (x.toNat_toUSize hs) 0 0 0
+  else (Nat.fold n (iamaxStep x) (0, 0)).1
+
+public theorem iamax!_eq (x : Vec n) : iamax! x = (Nat.fold n (iamaxStep x) (0, 0)).1 := by
+  unfold iamax!
+  split
+  · exact iamaxLoop_eq x _ _ rfl rfl _ _ _ 0 0 0 0 (by simp) (by lia) (.inl rfl) (by simp)
+  · rfl
+
+/-- The steps of `iamax` keep an index below the number of steps. -/
+private theorem fst_fold_iamaxStep_lt (x : Vec n) :
+    ∀ N (hN : N ≤ n), 0 < N → (Nat.fold N (fun l hl => iamaxStep x l (by lia)) (0, 0)).1 < N
+  | 0, _, h => absurd h (Nat.lt_irrefl 0)
+  | N + 1, hN, _ => by
+    have ih : N = 0 ∨ (Nat.fold N (fun l hl => iamaxStep x l (by lia)) (0, 0)).1 < N := by
+      rcases Nat.eq_zero_or_pos N with h | h
+      · exact .inl h
+      · exact .inr (fst_fold_iamaxStep_lt x N (by lia) h)
+    rw [Nat.fold_succ]
+    generalize Nat.fold N (fun l hl => iamaxStep x l (by lia)) (0, 0) = b at ih ⊢
+    simp only [iamaxStep]
+    split
+    · simp
+    · rcases ih with rfl | ih
+      · simp_all
+      · lia
+
+/-- `iamax! x` is an index of `x`, unless `x` is empty. -/
+public theorem iamax!_lt (x : Vec n) (h : n ≠ 0) : iamax! x < n := by
+  rw [iamax!_eq]
+  exact fst_fold_iamaxStep_lt x n (Nat.le_refl n) (by lia)
+
+/--
+The index of the first element of largest absolute value, or of the first `NaN`, of a nonempty
+vector, as in the reference BLAS, but starting at `0`. It is `iamax! x`, as a `Fin n`.
+-/
+@[expose] public def iamax (x : Vec n) (h : n ≠ 0 := by grind) : Fin n :=
+  ⟨iamax! x, iamax!_lt x h⟩
+
+@[simp] public theorem val_iamax (x : Vec n) (h : n ≠ 0) : (iamax x h).val = iamax! x := rfl
+
+/--
+The index of the first element of largest absolute value, or of the first `NaN`, as in the
+reference BLAS, but starting at `0`; `none` for the empty vector.
+-/
+@[expose] public def iamax? (x : Vec n) : Option (Fin n) :=
+  if h : n = 0 then none else some (iamax x h)
+
+@[simp] public theorem iamax?_eq_none_iff (x : Vec n) : iamax? x = none ↔ n = 0 := by
+  unfold iamax?; split <;> simp_all
+
+public theorem iamax?_eq_some (x : Vec n) (h : n ≠ 0) : iamax? x = some (iamax x h) := by
+  simp [iamax?, h]
+
+end Vec
+
+end BLAS.Float64
