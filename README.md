@@ -331,10 +331,13 @@ Level 2 and `gemm`, but the binaries then only run on CPUs like the one that bui
 ## Installation
 
 The library is a Batteries cell: it can be imported together with Batteries, and is kept in step
-with it. It depends on lean4-scalar-arrays, pinned to an exact release, and on Batteries, which it
-doesn't import; `BatteriesBLASCompat` imports both, so that a clash of names fails the build. The
-`main` branch builds against Batteries `main` and its Lean toolchain, and the `nightly-testing`
-branch against Batteries `nightly-testing` and its Lean nightly. Releases are tagged `vX.Y.Z`. Add
+with it. It depends on lean4-scalar-arrays, pinned to an exact release, on Batteries, and on
+[batteries-complex-float](https://github.com/fgdorais/batteries-complex-float), another Batteries
+cell, for the complex routines. `BatteriesBLASCompat` imports all of them, so that a clash of
+names fails the build. The `main` branch builds against Batteries `main` and its Lean toolchain,
+and the `nightly-testing` branch against Batteries `nightly-testing` and its Lean nightly. For
+now, `main` pins Batteries to the commit that batteries-complex-float pins, which has
+`Float.copySign`. Releases are tagged `vX.Y.Z`. Add
 one to your `lakefile.toml`, or `main` for the latest changes:
 
 ```toml
