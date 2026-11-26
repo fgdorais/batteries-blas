@@ -1,5 +1,5 @@
 name = "«lean4-blas»"
-defaultTargets = ["BLAS", "BLASTest", "bench"]
+defaultTargets = ["BLAS", "BLASTest", "BLASCompat", "bench"]
 testDriver = "BLASTest"
 
 # Linters that are off by default.
@@ -10,6 +10,14 @@ leanOptions = { linter.missingDocs = true, linter.extra = true }
 name = "lean4-scalar-arrays"
 git = "https://github.com/fgdorais/lean4-scalar-arrays"
 rev = "v2.0.0"
+
+# As a Batteries cell, it builds against Batteries: `main` here, `nightly-testing` on the
+# `nightly-testing` branch. The library doesn't import it; `BLASCompat` checks that the two can be
+# imported together.
+[[require]]
+name = "batteries"
+git = "https://github.com/leanprover-community/batteries"
+rev = "main"
 
 [[lean_lib]]
 name = "BLAS"
@@ -24,6 +32,11 @@ moreLeancArgs = ["-falign-loops=64"]
 [[lean_lib]]
 name = "BLASTest"
 precompileModules = true
+
+# Imports Batteries together with all of `BLAS`, so that a clash of names fails the build. Not
+# precompiled, so that Batteries isn't compiled to a shared library.
+[[lean_lib]]
+name = "BLASCompat"
 
 # The modules of the `bench` exe, other than its root.
 [[lean_lib]]

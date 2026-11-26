@@ -3,8 +3,9 @@
 [![CI](https://github.com/fgdorais/lean4-blas/actions/workflows/cd-pipeline.yml/badge.svg)](https://github.com/fgdorais/lean4-blas/actions/workflows/cd-pipeline.yml)
 
 Basic Linear Algebra Subprograms written entirely in Lean 4, on the unboxed arrays of
-[lean4-scalar-arrays](https://github.com/fgdorais/lean4-scalar-arrays), with no C code of its own.
-The routines come with proved specifications; their speed is measured, not promised.
+[lean4-scalar-arrays](https://github.com/fgdorais/lean4-scalar-arrays), with no C code of its own,
+as a [Batteries](https://github.com/leanprover-community/batteries) cell. The routines come with
+proved specifications; their speed is measured, not promised.
 
 It has, on `Float64` and `Float32`, the BLAS Level 1 routines on strided vectors, `gemv`, `ger`,
 `symv`, `syr`, `syr2` and `trsv`, `trmv` (with their transposed forms), the band routines `gbmv`,
@@ -329,10 +330,12 @@ Level 2 and `gemm`, but the binaries then only run on CPUs like the one that bui
 
 ## Installation
 
-The library depends only on lean4-scalar-arrays, pinned to an exact release. The `main` branch
-follows the newest Lean release, including release candidates, and the `nightly-testing` branch
-follows the newest Lean nightly. Releases are tagged `vX.Y.Z`. Add one to your `lakefile.toml`, or
-`main` for the latest changes:
+The library is a Batteries cell: it can be imported together with Batteries, and is kept in step
+with it. It depends on lean4-scalar-arrays, pinned to an exact release, and on Batteries, which it
+doesn't import; `BLASCompat` imports both, so that a clash of names fails the build. The `main`
+branch builds against Batteries `main` and its Lean toolchain, and the `nightly-testing` branch
+against Batteries `nightly-testing` and its Lean nightly. Releases are tagged `vX.Y.Z`. Add one to
+your `lakefile.toml`, or `main` for the latest changes:
 
 ```toml
 [[require]]

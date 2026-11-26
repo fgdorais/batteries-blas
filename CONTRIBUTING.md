@@ -87,8 +87,11 @@ don't put them under `BLAS/Float32/`, whose untemplated files the script removes
   than two deep recurse on the stack, so split them into separate functions.
 - Kernels fall back to the specification when the array is too large for `USize` indices, so that
   the specifications need no size hypotheses.
-- The library has no dependencies besides lean4-scalar-arrays, pinned to an exact release, and no
-  C code of its own. `scripts/cblas_bench.c` is only a benchmark.
+- The library has no dependencies besides lean4-scalar-arrays, pinned to an exact release, and
+  Batteries, required (but not imported) as a Batteries cell, and no C code of its own.
+  `scripts/cblas_bench.c` is only a benchmark.
+- The workflows follow the Batteries cell template: the toolchain of `main` follows Batteries
+  `main`, and that of `nightly-testing` follows Batteries `nightly-testing`.
 
 ## Naming
 
