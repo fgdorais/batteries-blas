@@ -623,7 +623,7 @@ public def gemmTNCols (α : Float) (A : Mat k m) (B : Mat k n) (β : Float) (C :
     let o := fun r => (co + cl * (j + r).toUSize).toNat
     have ho : ∀ r, j + r < n → o r = C.off + C.ld * (j + r) := fun r hr => by
       simp only [o, ← hco, ← hcl,
-        toNat_col_base C hs.2.2.1 hs.2.2.2.2.2.2 hr (hr.trans hs.2.2.2.2.1)]
+        toNat_col_base C hs.2.2.1 hs.2.2.2.2.2.2 hr (Nat.lt_trans hr hs.2.2.2.2.1)]
     gemmTNCols α A B β C hs co cl hco hcl (j + 2)
       (gemmTN2Data α A B β j (by lia) (o 0) (o 1) c
         (by rw [ho 0 (by lia), ho 1 (by lia)]; exact col_add_le' C.le_ld)
@@ -634,7 +634,7 @@ public def gemmTNCols (α : Float) (A : Mat k m) (B : Mat k n) (β : Float) (C :
     let o := (co + cl * j.toUSize).toNat
     have ho : o = C.off + C.ld * j := by
       simp only [o, ← hco, ← hcl,
-        toNat_col_base C hs.2.2.1 hs.2.2.2.2.2.2 h1 (h1.trans hs.2.2.2.2.1)]
+        toNat_col_base C hs.2.2.1 hs.2.2.2.2.2.2 h1 (Nat.lt_trans h1 hs.2.2.2.2.1)]
     gemmTNCols α A B β C hs co cl hco hcl (j + 1)
       (gemmTN1Data α A B β j h1 o c (by rw [ho, hc]; exact C.col_le hs.2.2.2.2.2.2 h1)
         ⟨hs.1, hs.2.1, hc ▸ hs.2.2.1, hs.2.2.2.1, hs.2.2.2.2.1, hs.2.2.2.2.2.1⟩)
@@ -656,7 +656,7 @@ private theorem gemmTNCols_eq (α : Float) (A : Mat k m) (B : Mat k n) (β : Flo
       have ho : ∀ r, j + r < n → (co + cl * (j + r).toUSize).toNat = C.off + C.ld * (j + r) :=
         fun r hr => by
           rw [← hco, ← hcl,
-            toNat_col_base C hs.2.2.1 hs.2.2.2.2.2.2 hr (hr.trans hs.2.2.2.2.1)]
+            toNat_col_base C hs.2.2.1 hs.2.2.2.2.2.2 hr (Nat.lt_trans hr hs.2.2.2.2.1)]
       rw [ih (n - (j + 2)) (by lia) (j + 2) _ _ rfl, iterRange_of_lt _ (show j < n by lia),
         iterRange_of_lt _ (show j + 1 < n by lia), gemmTN2Data_eq]
       dsimp only
@@ -666,7 +666,7 @@ private theorem gemmTNCols_eq (α : Float) (A : Mat k m) (B : Mat k n) (β : Flo
     · rename_i h2 h1
       have ho : (co + cl * j.toUSize).toNat = C.off + C.ld * j := by
         rw [← hco, ← hcl,
-          toNat_col_base C hs.2.2.1 hs.2.2.2.2.2.2 h1 (h1.trans hs.2.2.2.2.1)]
+          toNat_col_base C hs.2.2.1 hs.2.2.2.2.2.2 h1 (Nat.lt_trans h1 hs.2.2.2.2.1)]
       rw [ih (n - (j + 1)) (by lia) (j + 1) _ _ rfl, iterRange_of_lt _ h1, gemmTN1Data_eq, ho]
     · rename_i h2 h1
       rw [iterRange_of_le _ (by lia)]
