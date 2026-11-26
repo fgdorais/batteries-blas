@@ -43,7 +43,7 @@ def time {α : Type} [Add α] [OfNat α 0] [OfScientific α] [BEq α] (rounds n 
 structure Row where
   /-- The benchmark's name. -/
   name : String
-  /-- The time for `BLAS`, in milliseconds. -/
+  /-- The time for `BatteriesBLAS`, in milliseconds. -/
   time : Float
   /-- The time for the reference, in milliseconds, if there is one. -/
   ref : Option Float

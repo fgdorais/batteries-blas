@@ -10,9 +10,10 @@ public import BatteriesBLAS.Ops
 /-!
 # The `blas%` notation
 
-The root module `BLAS` doesn't import this one, because it makes `blas%` a keyword. Outside of
-`blas%` it adds nothing else: the right side of an update is in its own syntax category, so `ᵀ` and
-`A[:, j]` mean something only there, and `•` and `*` have the precedence of the formula.
+The root module `BatteriesBLAS` doesn't import this one, because it makes `blas%` a keyword.
+Outside of `blas%` it adds nothing else: the right side of an update is in its own syntax category,
+so `ᵀ` and `A[:, j]` mean something only there, and `•` and `*` have the precedence of the
+formula.
 
 `blas% y := e` updates `y` by a single routine, chosen from the form of `e` and the kinds of its
 operands. `y += e` is `y := y + e`, and `y -= e` is `y := y - e`. A block of updates, one per

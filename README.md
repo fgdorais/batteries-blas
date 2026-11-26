@@ -10,10 +10,10 @@ proved specifications; their speed is measured, not promised.
 It has, on `Float64` and `Float32`, the BLAS Level 1 routines on strided vectors, `gemv`, `ger`,
 `symv`, `syr`, `syr2` and `trsv`, `trmv` (with their transposed forms), the band routines `gbmv`,
 `sbmv`, `tbmv` and `tbsv` (with theirs), the packed routines `spmv`, `spr`, `spr2`, `tpmv` and
-`tpsv` (with theirs), and `gemm`, `syrk`, `syr2k`,
-`trsm` and `trmm` (with theirs) and `symm` on matrices with an offset and a leading dimension, as
-well as the mixed-precision `dsdot` and `sdsdot`. The `Float32` routines are in `BLAS.Float32`, with
-the same names and specifications as those of `BLAS.Float64`, on `Float32Array`.
+`tpsv` (with theirs), and `gemm`, `syrk`, `syr2k`, `trsm` and `trmm` (with theirs) and `symm` on
+matrices with an offset and a leading dimension, as well as the mixed-precision `dsdot` and
+`sdsdot`. The `Float32` routines are in the namespace `BLAS.Float32`, with the same names and
+specifications as those of `BLAS.Float64`, on `Float32Array`.
 
 ## Usage
 
@@ -344,8 +344,9 @@ git = "https://github.com/fgdorais/batteries-blas"
 rev = "main"
 ```
 
-and `import BatteriesBLAS`. CI builds and tests the library on Linux (x86_64 and arm64), macOS
-(arm64) and Windows (x86_64).
+and `import BatteriesBLAS`. The `blas%` notation is in `BatteriesBLAS.Notation`, which the root
+module doesn't import, because it makes `blas%` a keyword. CI builds and tests the library on Linux
+(x86_64 and arm64), macOS (arm64) and Windows (x86_64).
 
 ## Development
 
@@ -405,7 +406,8 @@ the other single-precision routines, and run `lake exe bench --tsv --float32`.
 
 This is only a script: the library itself has no C dependency.
 
-You can generate the documentation locally with `lake build BLAS:docs` in the `docs` directory.
+You can generate the documentation locally with `lake build BatteriesBLAS:docs` in the `docs`
+directory.
 
 -----
 

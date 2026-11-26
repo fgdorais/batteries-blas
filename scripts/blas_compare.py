@@ -8,7 +8,7 @@ Usage: blas_compare.py LEAN.tsv NAME=OTHER.tsv...
 LEAN.tsv holds the `lake exe bench --tsv` output, and each OTHER.tsv the `cblas_bench` output of
 one implementation, which is labeled NAME. Each file may hold several runs, of which the fastest
 time is kept. The table shows each time in milliseconds, or GFLOP/s where the operation count is
-known, and the ratio of the implementation's speed to `BLAS`'s: 2.0 means it is twice as fast.
+known, and the ratio of the implementation's speed to BatteriesBLAS's: 2.0 means it is twice as fast.
 """
 
 import re
