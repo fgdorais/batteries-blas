@@ -143,6 +143,13 @@ Netlib BLAS at 512 on the cloud Xeon (3.2–4.2 GFLOP/s against 3.6–6.1).
 - [ ] `hemm` makes one pass per row for the update of the column and one for the dot product, where
   the reference makes one.
 
+`symm`, `symmRight`, `syrk`, `syrkT`, `syr2k` and `syr2kT` run at 0.45–0.85× the speed of the
+Netlib BLAS at 512 on the cloud Xeon (2.8–4.3 GFLOP/s against 4.5–6.4), with the same loops as
+their Hermitian counterparts.
+
+- [ ] `symm` (0.5×) and `syr2k` have the same two passes as `hemm` and `her2k`; the same fusions
+  would apply.
+
 ## Level 2 (0.9–1.3× at 1024 and 2048, 1.2–1.8× at 256)
 
 - [x] `trmvT`: four elements per pass, which share the reads of `x`, each with its terms in their

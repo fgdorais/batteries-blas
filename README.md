@@ -30,7 +30,9 @@ and `ztrsv`), with a unit diagonal (`.unit`) or not. On Level 3 it has `gemm` (`
 factor as it is, transposed or conjugated and transposed: `gemm`, `gemmNT`, `gemmNC`, `gemmTN`,
 `gemmTT`, `gemmTC`, `gemmCN`, `gemmCT` and `gemmCC`, where the first letter is for `A` and the
 second for `B`, and the Hermitian `hemm` and `hemmRight` (`zhemm` with `SIDE = 'L'` and `'R'`),
-`herk` and `herkC` (`zherk` with `TRANS = 'N'` and `'C'`), and `her2k` and `her2kC` (`zher2k`).
+`herk` and `herkC` (`zherk` with `TRANS = 'N'` and `'C'`), and `her2k` and `her2kC` (`zher2k`),
+and the complex symmetric `symm` and `symmRight` (`zsymm`), `syrk` and `syrkT` (`zsyrk` with
+`TRANS = 'N'` and `'T'`), and `syr2k` and `syr2kT` (`zsyr2k`).
 
 ## Usage
 
@@ -336,7 +338,9 @@ and `C` is returned as it is when `α = 0` or `k = 0`, and `β = 1`. `hemm`, `he
 real part of the diagonal of a Hermitian `A`, `herk` and `her2k` keep the skips of the terms with
 `A[j, l] = 0` (and `B[j, l] = 0`) of `master`, multiply by the real `α` and `β` of `herk` as the
 complex numbers `(α, 0)` and `(β, 0)`, and set the imaginary part of the diagonal of `C` to `0`
-unless they return early. They were checked bit for bit
+unless they return early. `symm`, `symmRight`, `syrk`, `syrkT`, `syr2k` and `syr2kT` run the
+loops of `zsymm`, `zsyrk` and `zsyr2k` in the same way, with nothing conjugated, complex `α` and
+`β`, and the diagonal updated as the rest of the triangle. They were checked bit for bit
 against the Netlib BLAS 3.12 compiled with gfortran `-O2`, on random data with infinities, `NaN`s,
 signed zeros and subnormals mixed in.
 
