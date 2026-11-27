@@ -96,6 +96,12 @@ element: `axpy`, `dotc`, `nrm2`, `scal`, `copy` and `rot` are within 0.9–1.15�
   over both would touch memory once.
 - [ ] `copy` of contiguous vectors could copy the whole range at once.
 
+## Complex Level 2
+
+At 512 on the cloud Xeon, `gemv`, `gemvT`, `gemvC` and `geru` run at 5.6–6.8 GFLOP/s, against
+5.5–6.2 for the Netlib BLAS. They take one column of `A` per pass; several columns per pass, as the
+real `gemv` does, would read and write `y` less often.
+
 ## Level 2 (0.9–1.3× at 1024 and 2048, 1.2–1.8× at 256)
 
 - [x] `trmvT`: four elements per pass, which share the reads of `x`, each with its terms in their
