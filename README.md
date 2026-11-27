@@ -24,7 +24,7 @@ element followed by its imaginary part, as Fortran and C do; its offset and stri
 Complex matrices, `BLAS.ComplexFloat64.Mat m n`, are stored the same way in column-major order,
 with an offset and a leading dimension counted in elements. On them it has `gemv`, `gemvT` and
 `gemvC` (`zgemv` with `TRANS = 'N'`, `'T'` and `'C'`), `geru` and `gerc`, and the Hermitian
-`hemv`, `her` and `her2`, which read and update the upper triangle of `A` (`upper := true`) or its
+`hemv`, `her` and `her2`, which read and update the upper triangle of `A` (`.upper`) or its
 lower triangle.
 
 ## Usage

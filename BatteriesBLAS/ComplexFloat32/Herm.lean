@@ -5,6 +5,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 module
 
 public import BatteriesBLAS.ComplexFloat32.Level2
+public import BatteriesBLAS.Float32.Trsv
 
 /-!
 # Hermitian Level 2
@@ -246,49 +247,50 @@ private theorem fold_ite_eq {α : Type} {K : Nat} (j : Nat) (ψ : (l : Nat) → 
       simp only [e, this, ↓reduceIte]
 
 /-- Whether row `i` is in the triangle of column `j` other than the diagonal. -/
-@[expose] public def InTri (upper : Bool) (i j : Nat) : Prop :=
-  (upper = true ∧ i < j) ∨ (upper = false ∧ j < i)
+@[expose] public def InTri (uplo : Float32.Uplo) (i j : Nat) : Prop :=
+  (uplo = .upper ∧ i < j) ∨ (uplo = .lower ∧ j < i)
 
-public instance (upper : Bool) (i j : Nat) : Decidable (InTri upper i j) := by
+public instance (uplo : Float32.Uplo) (i j : Nat) : Decidable (InTri uplo i j) := by
   unfold InTri; infer_instance
 
 /-! ## `hemv` -/
 
 /-- The `dotc` of the part of column `j` in the triangle, without the diagonal, with `x`. -/
-@[expose] public def hemvDot (upper : Bool) (A : Mat n n) (x : Vec n) (j : Nat) (hj : j < n) :
+@[expose] public def hemvDot (uplo : Float32.Uplo) (A : Mat n n) (x : Vec n) (j : Nat)
+    (hj : j < n) :
     ComplexFloat32 :=
-  if upper then Vec.dotc ((A.col j hj).slice 0 j (by lia)) (x.slice 0 j (by lia))
+  if uplo = .upper then Vec.dotc ((A.col j hj).slice 0 j (by lia)) (x.slice 0 j (by lia))
   else Vec.dotc ((A.col j hj).slice (j + 1) (n - (j + 1)) (by lia))
     (x.slice (j + 1) (n - (j + 1)) (by lia))
 
 /--
 The step `j` of `hemv` at element `i` of `y`, from its value `s`: with `t₁ = mul α x[j]`, it adds
 `mul t₁ A[i, j]` when `i` is in the triangle of column `j`, and on the diagonal it gives
-`s + mulr t₁ A[j, j].re + mul α (hemvDot upper A x j)`, as `chemv`.
+`s + mulr t₁ A[j, j].re + mul α (hemvDot uplo A x j)`, as `chemv`.
 -/
-@[expose] public def hemvStep (upper : Bool) (α : ComplexFloat32) (A : Mat n n) (x : Vec n)
+@[expose] public def hemvStep (uplo : Float32.Uplo) (α : ComplexFloat32) (A : Mat n n) (x : Vec n)
     (j : Nat) (hj : j < n) (i : Nat) (hi : i < n) (s : ComplexFloat32) : ComplexFloat32 :=
-  if i = j then s + mulr (mul α x[j]) A[(j, j)].re + mul α (hemvDot upper A x j hj)
-  else if InTri upper i j then s + mul (mul α x[j]) A[(i, j)]
+  if i = j then s + mulr (mul α x[j]) A[(j, j)].re + mul α (hemvDot uplo A x j hj)
+  else if InTri uplo i j then s + mul (mul α x[j]) A[(i, j)]
   else s
 
 /-- The step `j` of `hemv`, on `y`. -/
-public def hemvCol (upper : Bool) (α : ComplexFloat32) (A : Mat n n) (x : Vec n) (j : Nat)
+public def hemvCol (uplo : Float32.Uplo) (α : ComplexFloat32) (A : Mat n n) (x : Vec n) (j : Nat)
     (hj : j < n) (y : Vec n) : Vec n :=
   let t₁ := mul α x[j]
   let y :=
-    if upper then
+    if uplo = .upper then
       y.withSlice 0 j (by lia) (fun s => Vec.axpyData t₁ ((A.col j hj).slice 0 j (by lia)) s)
         (fun s => by rw [Vec.axpyData_eq, size_modifyAt2])
     else
       y.withSlice (j + 1) (n - (j + 1)) (by lia)
         (fun s => Vec.axpyData t₁ ((A.col j hj).slice (j + 1) (n - (j + 1)) (by lia)) s)
         (fun s => by rw [Vec.axpyData_eq, size_modifyAt2])
-  y.set j hj (y[j] + mulr t₁ A[(j, j)].re + mul α (hemvDot upper A x j hj))
+  y.set j hj (y[j] + mulr t₁ A[(j, j)].re + mul α (hemvDot uplo A x j hj))
 
-private theorem getElem_hemvCol (upper : Bool) (α : ComplexFloat32) (A : Mat n n) (x : Vec n)
+private theorem getElem_hemvCol (uplo : Float32.Uplo) (α : ComplexFloat32) (A : Mat n n) (x : Vec n)
     (j : Nat) (hj : j < n) (y : Vec n) (i : Nat) (hi : i < n) :
-    (hemvCol upper α A x j hj y)[i] = hemvStep upper α A x j hj i hi y[i] := by
+    (hemvCol uplo α A x j hj y)[i] = hemvStep uplo α A x j hj i hi y[i] := by
   have hw : ∀ (lo len : Nat) (h : lo + len ≤ n) (l : Nat) (hl : l < n),
       (y.withSlice lo len h (fun s => Vec.axpyData (mul α x[j]) ((A.col j hj).slice lo len
         (by lia)) s) (fun s => by rw [Vec.axpyData_eq, size_modifyAt2]))[l] =
@@ -303,8 +305,9 @@ private theorem getElem_hemvCol (upper : Bool) (α : ComplexFloat32) (A : Mat n 
     · rfl
   unfold hemvCol hemvStep
   rw [Vec.getElem_set]
-  cases upper
-  · simp only [Bool.false_eq_true, ↓reduceIte, InTri, false_and, true_and, false_or]
+  cases uplo
+  rotate_left
+  · simp only [reduceCtorEq, ↓reduceIte, InTri, false_and, true_and, false_or]
     rw [hw _ _ _ j hj, hw _ _ _ i hi]
     by_cases e : i = j
     · subst e; simp [show ¬(i + 1 ≤ i) by lia]
@@ -317,28 +320,28 @@ private theorem getElem_hemvCol (upper : Bool) (α : ComplexFloat32) (A : Mat n 
     · simp [e]
 
 /--
-`hemv upper α A x β y` is `α * A * x + β * y` for the Hermitian matrix `A` stored in its upper
-triangle (`upper`) or its lower triangle, as `chemv`: it returns `y` when `n = 0`, or `α = 0` and
-`β = 1`; it scales `y` by `β` (`betaScal`), returns when `α = 0`, and then runs the steps
-`hemvCol` for each column in increasing order. It reads only the real part of the diagonal.
+`hemv uplo α A x β y` is `α * A * x + β * y` for the Hermitian matrix `A` stored in its upper
+triangle (`.upper`) or its lower triangle (`.lower`), as `chemv`: it returns `y` when `n = 0`, or
+`α = 0` and `β = 1`; it scales `y` by `β` (`betaScal`), returns when `α = 0`, and then runs the
+steps `hemvCol` for each column in increasing order. It reads only the real part of the diagonal.
 -/
-@[expose] public def hemv (upper : Bool) (α : ComplexFloat32) (A : Mat n n) (x : Vec n)
+@[expose] public def hemv (uplo : Float32.Uplo) (α : ComplexFloat32) (A : Mat n n) (x : Vec n)
     (β : ComplexFloat32) (y : Vec n) : Vec n :=
   if n = 0 then y
   else if isZero α && isOne β then y
   else
     let y := y.betaScal β
-    if isZero α then y else Nat.fold n (fun j hj y => hemvCol upper α A x j hj y) y
+    if isZero α then y else Nat.fold n (fun j hj y => hemvCol uplo α A x j hj y) y
 
 /--
 Element `i` of `hemv`: `betaMul β y[i]` when `α = 0`, and otherwise the fold of the steps
 `hemvStep` over the columns, from `betaMul β y[i]`.
 -/
-public theorem getElem_hemv (upper : Bool) (α : ComplexFloat32) (A : Mat n n) (x : Vec n)
+public theorem getElem_hemv (uplo : Float32.Uplo) (α : ComplexFloat32) (A : Mat n n) (x : Vec n)
     (β : ComplexFloat32) (y : Vec n) (i : Nat) (h : i < n) :
-    (hemv upper α A x β y)[i] =
+    (hemv uplo α A x β y)[i] =
       if isZero α then betaMul β y[i]
-      else Nat.fold n (fun j hj s => hemvStep upper α A x j hj i h s) (betaMul β y[i]) := by
+      else Nat.fold n (fun j hj s => hemvStep uplo α A x j hj i h s) (betaMul β y[i]) := by
   unfold hemv
   have hn : n ≠ 0 := by lia
   simp only [hn, ↓reduceIte]
@@ -346,27 +349,27 @@ public theorem getElem_hemv (upper : Bool) (α : ComplexFloat32) (A : Mat n n) (
   · by_cases hb : isOne β
     · simp [ha, hb, betaMul]
     · simp [ha, hb]
-  · simp only [ha, Bool.false_and, Bool.false_eq_true, ↓reduceIte]
-    rw [Vec.getElem_fold_of_pointwise (fun j hj y => hemvCol upper α A x j hj y)
-      (fun j hj i hi s => hemvStep upper α A x j hj i hi s)
-      (fun j hj y i hi => getElem_hemvCol upper α A x j hj y i hi) _ i h n (Nat.le_refl _),
+  · simp only [ha, Bool.false_and, reduceCtorEq, ↓reduceIte]
+    rw [Vec.getElem_fold_of_pointwise (fun j hj y => hemvCol uplo α A x j hj y)
+      (fun j hj i hi s => hemvStep uplo α A x j hj i hi s)
+      (fun j hj y i hi => getElem_hemvCol uplo α A x j hj y i hi) _ i h n (Nat.le_refl _),
       Vec.getElem_betaScal]
 
 /-! ## `her` -/
 
 /--
-Element `(i, j)` of `her upper α x A` from its old value `a`, for `α ≠ 0`: with
+Element `(i, j)` of `her uplo α x A` from its old value `a`, for `α ≠ 0`: with
 `t = rmul α x[j].conj`, it adds `mul x[i] t` in the triangle, and on the diagonal it gives
 `⟨a.re + (mul x[j] t).re, 0⟩` in the upper triangle and `⟨a.re + (mul t x[j]).re, 0⟩` in the
 lower one, as `cher`; a column with `x[j] = 0` keeps its elements, but the imaginary part of its
 diagonal is set to `0`.
 -/
-@[expose] public def herAt (upper : Bool) (α : Float32) (x : Vec n) (i j : Nat) (hi : i < n)
+@[expose] public def herAt (uplo : Float32.Uplo) (α : Float32) (x : Vec n) (i j : Nat) (hi : i < n)
     (hj : j < n) (a : ComplexFloat32) : ComplexFloat32 :=
   let t := rmul α x[j].conj
   if isZero x[j] then (if i = j then ⟨a.re, 0⟩ else a)
-  else if i = j then ⟨a.re + (if upper then mul x[j] t else mul t x[j]).re, 0⟩
-  else if InTri upper i j then a + mul x[i] t
+  else if i = j then ⟨a.re + (if uplo = .upper then mul x[j] t else mul t x[j]).re, 0⟩
+  else if InTri uplo i j then a + mul x[i] t
   else a
 
 /-- The diagonal element `a` of column `j` replaced by `⟨g a.re, 0⟩`. -/
@@ -387,12 +390,12 @@ private theorem getElem_setDiag (A : Mat n n) (j : Nat) (hj : j < n) (g : Float3
   simp only [this]
 
 /-- The step `j` of `her`, on `A`. -/
-public def herCol (upper : Bool) (α : Float32) (x : Vec n) (j : Nat) (hj : j < n) (A : Mat n n) :
-    Mat n n :=
+public def herCol (uplo : Float32.Uplo) (α : Float32) (x : Vec n) (j : Nat) (hj : j < n)
+    (A : Mat n n) : Mat n n :=
   if isZero x[j] then A.setDiag j hj id
   else
     let t := rmul α x[j].conj
-    if upper then
+    if uplo = .upper then
       let A := A.withColSlice j hj 0 j (by lia)
         (fun s => Vec.axpyRData t (x.slice 0 j (by lia)) s)
         (fun s => by rw [Vec.axpyRData_eq, size_modifyAt2])
@@ -417,10 +420,10 @@ private theorem getElem_withColSlice_axpyR (A : Mat n n) (j : Nat) (hj : j < n) 
     rfl
   · rfl
 
-private theorem getElem_herCol (upper : Bool) (α : Float32) (x : Vec n) (j : Nat) (hj : j < n)
+private theorem getElem_herCol (uplo : Float32.Uplo) (α : Float32) (x : Vec n) (j : Nat) (hj : j < n)
     (A : Mat n n) (i j' : Nat) (h : i < n ∧ j' < n) :
-    (herCol upper α x j hj A)[(i, j')] =
-      if j = j' then herAt upper α x i j h.1 hj A[(i, j')] else A[(i, j')] := by
+    (herCol uplo α x j hj A)[(i, j')] =
+      if j = j' then herAt uplo α x i j h.1 hj A[(i, j')] else A[(i, j')] := by
   unfold herCol herAt
   by_cases e : j = j'
   · subst e
@@ -429,9 +432,10 @@ private theorem getElem_herCol (upper : Bool) (α : Float32) (x : Vec n) (j : Na
       by_cases e' : i = j
       · subst e'; simp
       · simp [e']
-    · simp only [hz, Bool.false_eq_true, ↓reduceIte]
-      cases upper
-      · simp only [Bool.false_eq_true, ↓reduceIte, getElem_withColSlice_axpyR, getElem_setDiag,
+    · simp only [hz, reduceCtorEq, ↓reduceIte]
+      cases uplo
+      rotate_left
+      · simp only [reduceCtorEq, ↓reduceIte, getElem_withColSlice_axpyR, getElem_setDiag,
           true_and, InTri, false_and, false_or]
         by_cases e' : i = j
         · subst e'; simp [show ¬(i + 1 ≤ i) by lia]
@@ -445,57 +449,57 @@ private theorem getElem_herCol (upper : Bool) (α : Float32) (x : Vec n) (j : Na
   · have e' : ¬j' = j := Ne.symm e
     by_cases hz : isZero x[j]
     · simp [hz, getElem_setDiag, e, e']
-    · cases upper <;> simp [hz, getElem_withColSlice_axpyR, getElem_setDiag, e, e']
+    · cases uplo <;> simp [hz, getElem_withColSlice_axpyR, getElem_setDiag, e, e']
 
 /--
-`her upper α x A` is `α * x * xᴴ + A`, for a real `α`, on the upper triangle of `A` (`upper`) or
-its lower triangle, as `cher`: it returns `A` when `n = 0` or `α = 0`, and otherwise runs the
+`her uplo α x A` is `α * x * xᴴ + A`, for a real `α`, on the upper triangle of `A` (`.upper`) or its
+lower triangle (`.lower`), as `cher`: it returns `A` when `n = 0` or `α = 0`, and otherwise runs the
 steps `herCol` for each column in increasing order. The other triangle is unchanged.
 -/
-@[expose] public def her (upper : Bool) (α : Float32) (x : Vec n) (A : Mat n n) : Mat n n :=
-  if α == 0 then A else Nat.fold n (fun j hj A => herCol upper α x j hj A) A
+@[expose] public def her (uplo : Float32.Uplo) (α : Float32) (x : Vec n) (A : Mat n n) : Mat n n :=
+  if α == 0 then A else Nat.fold n (fun j hj A => herCol uplo α x j hj A) A
 
-/-- Element `(i, j)` of `her`: `A[i, j]` when `α = 0`, and `herAt upper α x i j A[i, j]`. -/
-public theorem getElem_her (upper : Bool) (α : Float32) (x : Vec n) (A : Mat n n) (i j : Nat)
+/-- Element `(i, j)` of `her`: `A[i, j]` when `α = 0`, and `herAt uplo α x i j A[i, j]`. -/
+public theorem getElem_her (uplo : Float32.Uplo) (α : Float32) (x : Vec n) (A : Mat n n) (i j : Nat)
     (h : i < n ∧ j < n) :
-    (her upper α x A)[(i, j)] =
-      if α == 0 then A[(i, j)] else herAt upper α x i j h.1 h.2 A[(i, j)] := by
+    (her uplo α x A)[(i, j)] =
+      if α == 0 then A[(i, j)] else herAt uplo α x i j h.1 h.2 A[(i, j)] := by
   unfold her
   split
   · rfl
-  · rw [getElem_fold_of_pointwise (fun l hl B => herCol upper α x l hl B)
-      (fun l hl i j' hij s => if l = j' then herAt upper α x i l hij.1 hl s else s)
-      (fun l hl B i j' hij => getElem_herCol upper α x l hl B i j' hij) A i j h n (Nat.le_refl _),
-      fold_ite_eq j (fun l hl s => herAt upper α x i l h.1 hl s) _ n (Nat.le_refl _)]
+  · rw [getElem_fold_of_pointwise (fun l hl B => herCol uplo α x l hl B)
+      (fun l hl i j' hij s => if l = j' then herAt uplo α x i l hij.1 hl s else s)
+      (fun l hl B i j' hij => getElem_herCol uplo α x l hl B i j' hij) A i j h n (Nat.le_refl _),
+      fold_ite_eq j (fun l hl s => herAt uplo α x i l h.1 hl s) _ n (Nat.le_refl _)]
     simp [h.2]
 
 /-! ## `her2` -/
 
 /--
-Element `(i, j)` of `her2 upper α x y A` from its old value `a`, for `α ≠ 0`: with
+Element `(i, j)` of `her2 uplo α x y A` from its old value `a`, for `α ≠ 0`: with
 `t₁ = mul α y[j].conj` and `t₂ = (mul α x[j]).conj`, it adds `mul x[i] t₁` and then `mul y[i] t₂`
 in the triangle, and on the diagonal it gives `⟨a.re + (mul x[j] t₁ + mul y[j] t₂).re, 0⟩`, as
 `cher2`; a column with `x[j] = 0` and `y[j] = 0` keeps its elements, but the imaginary part of
 its diagonal is set to `0`.
 -/
-@[expose] public def her2At (upper : Bool) (α : ComplexFloat32) (x y : Vec n) (i j : Nat)
+@[expose] public def her2At (uplo : Float32.Uplo) (α : ComplexFloat32) (x y : Vec n) (i j : Nat)
     (hi : i < n) (hj : j < n) (a : ComplexFloat32) : ComplexFloat32 :=
   let t₁ := mul α y[j].conj
   let t₂ := (mul α x[j]).conj
   if isZero x[j] && isZero y[j] then (if i = j then ⟨a.re, 0⟩ else a)
   else if i = j then ⟨a.re + (mul x[j] t₁ + mul y[j] t₂).re, 0⟩
-  else if InTri upper i j then a + mul x[i] t₁ + mul y[i] t₂
+  else if InTri uplo i j then a + mul x[i] t₁ + mul y[i] t₂
   else a
 
 /-- The step `j` of `her2`, on `A`. -/
-public def her2Col (upper : Bool) (α : ComplexFloat32) (x y : Vec n) (j : Nat) (hj : j < n)
+public def her2Col (uplo : Float32.Uplo) (α : ComplexFloat32) (x y : Vec n) (j : Nat) (hj : j < n)
     (A : Mat n n) : Mat n n :=
   if isZero x[j] && isZero y[j] then A.setDiag j hj id
   else
     let t₁ := mul α y[j].conj
     let t₂ := (mul α x[j]).conj
     let w := (mul x[j] t₁ + mul y[j] t₂).re
-    if upper then
+    if uplo = .upper then
       let A := A.withColSlice j hj 0 j (by lia)
         (fun s => Vec.axpyRData t₁ (x.slice 0 j (by lia)) s)
         (fun s => by rw [Vec.axpyRData_eq, size_modifyAt2])
@@ -512,10 +516,10 @@ public def her2Col (upper : Bool) (α : ComplexFloat32) (x y : Vec n) (j : Nat) 
         (fun s => Vec.axpyRData t₂ (y.slice (j + 1) (n - (j + 1)) (by lia)) s)
         (fun s => by rw [Vec.axpyRData_eq, size_modifyAt2])
 
-private theorem getElem_her2Col (upper : Bool) (α : ComplexFloat32) (x y : Vec n) (j : Nat)
+private theorem getElem_her2Col (uplo : Float32.Uplo) (α : ComplexFloat32) (x y : Vec n) (j : Nat)
     (hj : j < n) (A : Mat n n) (i j' : Nat) (h : i < n ∧ j' < n) :
-    (her2Col upper α x y j hj A)[(i, j')] =
-      if j = j' then her2At upper α x y i j h.1 hj A[(i, j')] else A[(i, j')] := by
+    (her2Col uplo α x y j hj A)[(i, j')] =
+      if j = j' then her2At uplo α x y i j h.1 hj A[(i, j')] else A[(i, j')] := by
   unfold her2Col her2At
   by_cases e : j = j'
   · subst e
@@ -524,9 +528,10 @@ private theorem getElem_her2Col (upper : Bool) (α : ComplexFloat32) (x y : Vec 
       by_cases e' : i = j
       · subst e'; simp
       · simp [e']
-    · simp only [hz, Bool.false_eq_true, ↓reduceIte]
-      cases upper
-      · simp only [Bool.false_eq_true, ↓reduceIte, getElem_withColSlice_axpyR, getElem_setDiag,
+    · simp only [hz, reduceCtorEq, ↓reduceIte]
+      cases uplo
+      rotate_left
+      · simp only [reduceCtorEq, ↓reduceIte, getElem_withColSlice_axpyR, getElem_setDiag,
           true_and, InTri, false_and, false_or]
         by_cases e' : i = j
         · subst e'; simp [show ¬(i + 1 ≤ i) by lia]
@@ -540,30 +545,30 @@ private theorem getElem_her2Col (upper : Bool) (α : ComplexFloat32) (x y : Vec 
   · have e' : ¬j' = j := Ne.symm e
     by_cases hz : isZero x[j] && isZero y[j]
     · simp [hz, getElem_setDiag, e, e']
-    · cases upper <;> simp [hz, getElem_withColSlice_axpyR, getElem_setDiag, e, e']
+    · cases uplo <;> simp [hz, getElem_withColSlice_axpyR, getElem_setDiag, e, e']
 
 /--
-`her2 upper α x y A` is `α * x * yᴴ + conj α * y * xᴴ + A` on the upper triangle of `A`
-(`upper`) or its lower triangle, as `cher2`: it returns `A` when `α = 0`, and otherwise runs the
-steps `her2Col` for each column in increasing order. The other triangle is unchanged.
+`her2 uplo α x y A` is `α * x * yᴴ + conj α * y * xᴴ + A` on the upper triangle of `A`
+(`.upper`) or its lower triangle (`.lower`), as `cher2`: it returns `A` when `α = 0`, and otherwise
+runs the steps `her2Col` for each column in increasing order. The other triangle is unchanged.
 -/
-@[expose] public def her2 (upper : Bool) (α : ComplexFloat32) (x y : Vec n) (A : Mat n n) :
+@[expose] public def her2 (uplo : Float32.Uplo) (α : ComplexFloat32) (x y : Vec n) (A : Mat n n) :
     Mat n n :=
-  if isZero α then A else Nat.fold n (fun j hj A => her2Col upper α x y j hj A) A
+  if isZero α then A else Nat.fold n (fun j hj A => her2Col uplo α x y j hj A) A
 
-/-- Element `(i, j)` of `her2`: `A[i, j]` when `α = 0`, and `her2At upper α x y i j A[i, j]`. -/
-public theorem getElem_her2 (upper : Bool) (α : ComplexFloat32) (x y : Vec n) (A : Mat n n)
+/-- Element `(i, j)` of `her2`: `A[i, j]` when `α = 0`, and `her2At uplo α x y i j A[i, j]`. -/
+public theorem getElem_her2 (uplo : Float32.Uplo) (α : ComplexFloat32) (x y : Vec n) (A : Mat n n)
     (i j : Nat) (h : i < n ∧ j < n) :
-    (her2 upper α x y A)[(i, j)] =
-      if isZero α then A[(i, j)] else her2At upper α x y i j h.1 h.2 A[(i, j)] := by
+    (her2 uplo α x y A)[(i, j)] =
+      if isZero α then A[(i, j)] else her2At uplo α x y i j h.1 h.2 A[(i, j)] := by
   unfold her2
   split
   · rfl
-  · rw [getElem_fold_of_pointwise (fun l hl B => her2Col upper α x y l hl B)
-      (fun l hl i j' hij s => if l = j' then her2At upper α x y i l hij.1 hl s else s)
-      (fun l hl B i j' hij => getElem_her2Col upper α x y l hl B i j' hij) A i j h n
+  · rw [getElem_fold_of_pointwise (fun l hl B => her2Col uplo α x y l hl B)
+      (fun l hl i j' hij s => if l = j' then her2At uplo α x y i l hij.1 hl s else s)
+      (fun l hl B i j' hij => getElem_her2Col uplo α x y l hl B i j' hij) A i j h n
       (Nat.le_refl _),
-      fold_ite_eq j (fun l hl s => her2At upper α x y i l h.1 hl s) _ n (Nat.le_refl _)]
+      fold_ite_eq j (fun l hl s => her2At uplo α x y i l h.1 hl s) _ n (Nat.le_refl _)]
     simp [h.2]
 
 end Mat

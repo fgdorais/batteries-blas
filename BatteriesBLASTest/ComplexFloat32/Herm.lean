@@ -42,41 +42,41 @@ def L : Mat 2 2 := .ofFn fun i j => #[#[c 2 9, c 99 99], #[c 1 (-1), c 3 9]][i]!
 /-! ## `hemv` -/
 
 -- `A * [1, I] = [1 + I, 1 + 2 * I]`, from either triangle.
-#guard eqList (Mat.hemv true (c 1 0) U (v [c 1 0, c 0 1]) (c 0 0) (v [c 5 5, c 7 7])).toList
+#guard eqList (Mat.hemv .upper (c 1 0) U (v [c 1 0, c 0 1]) (c 0 0) (v [c 5 5, c 7 7])).toList
   [c 1 1, c 1 2]
-#guard eqList (Mat.hemv false (c 1 0) L (v [c 1 0, c 0 1]) (c 0 0) (v [c 5 5, c 7 7])).toList
+#guard eqList (Mat.hemv .lower (c 1 0) L (v [c 1 0, c 0 1]) (c 0 0) (v [c 5 5, c 7 7])).toList
   [c 1 1, c 1 2]
 -- `I * A * x + 2 * y`.
-#guard eqList (Mat.hemv true (c 0 1) U (v [c 1 0, c 0 1]) (c 2 0) (v [c 1 0, c 0 1])).toList
+#guard eqList (Mat.hemv .upper (c 0 1) U (v [c 1 0, c 0 1]) (c 2 0) (v [c 1 0, c 0 1])).toList
   [c 1 1, c (-2) 3]
 -- `α = 0` scales `y` by `β`; `α = 0` and `β = 1` return `y`.
-#guard eqList (Mat.hemv true (c 0 0) U (v [c nan 0, c 0 1]) (c 0 1) (v [c 1 0, c 0 1])).toList
+#guard eqList (Mat.hemv .upper (c 0 0) U (v [c nan 0, c 0 1]) (c 0 1) (v [c 1 0, c 0 1])).toList
   [c 0 1, c (-1) 0]
-#guard (Mat.hemv false (c 0 0) L (v [c nan 0, c 0 1]) (c 1 0) (v [c 1 2, c 3 4])).toList ==
+#guard (Mat.hemv .lower (c 0 0) L (v [c nan 0, c 0 1]) (c 1 0) (v [c 1 2, c 3 4])).toList ==
   [c 1 2, c 3 4]
 
 /-! ## `her` -/
 
 -- `A + [1, I] * [1, I]ᴴ`: the diagonal becomes real, the other triangle is unchanged.
-#guard eqList ((Mat.her true 1 (v [c 1 0, c 0 1]) U).toList.take 3) [c 3 0, c 99 99, c 1 0]
-#guard (Mat.her true 1 (v [c 1 0, c 0 1]) U)[(1, 1)] == c 4 0
-#guard eqList (Mat.her false 1 (v [c 1 0, c 0 1]) L).toList
+#guard eqList ((Mat.her .upper 1 (v [c 1 0, c 0 1]) U).toList.take 3) [c 3 0, c 99 99, c 1 0]
+#guard (Mat.her .upper 1 (v [c 1 0, c 0 1]) U)[(1, 1)] == c 4 0
+#guard eqList (Mat.her .lower 1 (v [c 1 0, c 0 1]) L).toList
   [c 3 0, c 1 0, c 99 99, c 4 0]
 -- A zero `x[j]` still sets the imaginary part of the diagonal to `0`, but `α = 0` doesn't.
-#guard eqList (Mat.her true 1 (v [c 0 0, c 0 0]) U).toList [c 2 0, c 99 99, c 1 1, c 3 0]
-#guard (Mat.her true 0 (v [c 1 0, c 0 1]) U)[(0, 0)] == c 2 9
+#guard eqList (Mat.her .upper 1 (v [c 0 0, c 0 0]) U).toList [c 2 0, c 99 99, c 1 1, c 3 0]
+#guard (Mat.her .upper 0 (v [c 1 0, c 0 1]) U)[(0, 0)] == c 2 9
 
 /-! ## `her2` -/
 
 -- `A + x * yᴴ + y * xᴴ` with `x = [1, 0]` and `y = [0, I]` adds `-I` above the diagonal.
-#guard eqList (Mat.her2 true (c 1 0) (v [c 1 0, c 0 0]) (v [c 0 0, c 0 1]) U).toList
+#guard eqList (Mat.her2 .upper (c 1 0) (v [c 1 0, c 0 0]) (v [c 0 0, c 0 1]) U).toList
   [c 2 0, c 99 99, c 1 0, c 3 0]
-#guard eqList (Mat.her2 false (c 1 0) (v [c 1 0, c 0 0]) (v [c 0 0, c 0 1]) L).toList
+#guard eqList (Mat.her2 .lower (c 1 0) (v [c 1 0, c 0 0]) (v [c 0 0, c 0 1]) L).toList
   [c 2 0, c 1 0, c 99 99, c 3 0]
 -- `α = I` and `x = y = [1, 1]`: `α + conj α = 0`, so only the diagonal changes.
-#guard eqList (Mat.her2 true (c 0 1) (v [c 1 0, c 1 0]) (v [c 1 0, c 1 0]) U).toList
+#guard eqList (Mat.her2 .upper (c 0 1) (v [c 1 0, c 1 0]) (v [c 1 0, c 1 0]) U).toList
   [c 2 0, c 99 99, c 1 1, c 3 0]
 -- `α = 0` returns `A`.
-#guard (Mat.her2 true (c 0 0) (v [c 1 0, c 0 1]) (v [c 1 0, c 0 1]) U)[(0, 0)] == c 2 9
+#guard (Mat.her2 .upper (c 0 0) (v [c 1 0, c 0 1]) (v [c 1 0, c 0 1]) U)[(0, 0)] == c 2 9
 
 end BLASTest.ComplexFloat32.Herm
