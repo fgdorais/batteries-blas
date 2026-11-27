@@ -8,10 +8,12 @@ public import BatteriesBLAS.ComplexFloat32.Basic
 public import BatteriesBLAS.ComplexFloat32.Vec
 public import BatteriesBLAS.ComplexFloat32.Level1
 public import BatteriesBLAS.ComplexFloat32.Rot
+public import BatteriesBLAS.ComplexFloat32.Mat
+public import BatteriesBLAS.ComplexFloat32.Level2
 
 /-!
 # BLAS on `ComplexFloat32`
 
-The complex routines, on vectors of `ComplexFloat32` stored in `Float32Array`s with interleaved real
-and imaginary parts, as in Fortran.
+The complex routines, on vectors and matrices of `ComplexFloat32` stored in `Float32Array`s with
+interleaved real and imaginary parts, as in Fortran.
 -/

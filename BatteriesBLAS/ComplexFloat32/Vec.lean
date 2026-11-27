@@ -211,6 +211,12 @@ public def ofFn (f : Fin n → ComplexFloat32) : Vec n :=
   have h₂ : (2 * i + 1) / 2 = i := by lia
   simp [h₁, h₂, Nat.add_mod]
 
+@[simp] public theorem off_ofFn (f : Fin n → ComplexFloat32) : (ofFn f).off = 0 := by
+  simp [ofFn, ofArray]
+
+@[simp] public theorem inc_ofFn (f : Fin n → ComplexFloat32) : (ofFn f).inc = 1 := by
+  simp [ofFn, ofArray]
+
 /-- The contiguous vector with the elements of `l`, of length `n`. -/
 public def ofList (l : List ComplexFloat32) (h : l.length = n := by simp) : Vec n :=
   ofFn fun i => l[i.val]'(by rw [h]; exact i.isLt)
