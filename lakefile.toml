@@ -13,9 +13,6 @@ rev = "nightly-testing"
 
 # As a Batteries cell, it builds against Batteries: `main` here, `nightly-testing` on the
 # `nightly-testing` branch. `BatteriesBLASCompat` checks that the two can be imported together.
-# For now, `main` is pinned to the Batteries commit that batteries-complex-float pins (37a0a4a,
-# which has `Float.signBit` and `Float.copySign`), since Lake builds every package against the
-# root's Batteries. It goes back to `main` when batteries-complex-float does.
 [[require]]
 name = "batteries"
 git = "https://github.com/leanprover-community/batteries"
