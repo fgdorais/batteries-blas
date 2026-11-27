@@ -86,14 +86,19 @@ Changes that would reorder them, such as partial sums in `dot`, `asum` and `nrm2
 ## Complex Level 1
 
 Measured at 1M elements on the cloud Xeon against the Netlib BLAS 3.12.0 (gfortran `-O2`), in ns per
-element: `axpy`, `dotc`, `nrm2`, `scal`, `copy` and `rot` are within 0.9–1.15× of it, and `asum` is
-2.4× faster.
+element. The products of libgcc (`mul`, with the recovery of infinities when both parts are `NaN`)
+cost `dotc` and `dotu` about 1.1× (1.4 against 1.3, by a pass with textbook products and a flag,
+redone with `mul` when the flag drops), `scal` 1.15× and `rot` 1.7× (8 against 4.7). `nrm2`,
+`copy` and `asum` are at parity or faster.
 
 - [ ] `iamax` is 2.2× behind (2.9 against 1.3 ns). The loop is tight; the extra cost is likely the
   finiteness tests of both parts before the sum. Try a loop specialized for the unscaled case, or
   the independent running maxima above.
-- [ ] `rot` makes two passes, one over the real parts and one over the imaginary parts; one pass
-  over both would touch memory once.
+- [ ] `rot` updates `x` in a copy of its array, so that the old `x` is left for the update of `y`;
+  one pass over both arrays, with a loop on two arrays of four parts per step, would not copy.
+- [ ] `scal`, `axpy` and the `axpy` of the columns of Level 2 test for the recovery twice per
+  element, once per part; one test per element, or a pass with a flag as in `dotc`, would be
+  faster.
 - [ ] `copy` of contiguous vectors could copy the whole range at once.
 
 ## Complex Level 2
@@ -102,8 +107,8 @@ At 512 on the cloud Xeon, `gemv`, `gemvT`, `gemvC` and `geru` run at 5.6–6.8 G
 5.5–6.2 for the Netlib BLAS. They take one column of `A` per pass; several columns per pass, as the
 real `gemv` does, would read and write `y` less often.
 
-`hemv`, `her` and `her2` run at 0.72–1.0× the speed of the Netlib BLAS at 512 (4.1–5.4 against
-4.4–6.2 GFLOP/s).
+`hemv`, `her` and `her2` run at 0.5–0.7× the speed of the Netlib BLAS at 512 (2.4–3.9 against
+4.9–6.4 GFLOP/s), with the products of libgcc.
 
 - [ ] `hemv` makes two passes over each column, the `axpy` into `y` and the dot product with `x`,
   where the reference makes one; fusing them, with each sum in its order, would read the column

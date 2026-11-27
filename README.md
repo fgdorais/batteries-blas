@@ -301,18 +301,24 @@ from the products of the elements converted to `Float64`, and `sdsdot sb x y` ad
 `Float64` and rounds the sum to `Float32`, as the reference `dsdot` and `sdsdot` do.
 
 The complex routines compute as the reference BLAS does when gfortran compiles it with its usual
-flags, not with the arithmetic of `ComplexFloat`: a product is the textbook formula
-`(a.re * b.re - a.im * b.im, a.re * b.im + a.im * b.re)` (`BLAS.ComplexFloat64.mul`), a real
-times a complex number scales both parts, and `dotc` multiplies by the conjugate with its negated
-imaginary part. `asum` and `iamax` use `|re| + |im|`, `nrm2` is Blue's algorithm on the real
-part and then the imaginary part of each element, and `rotg` is the `zrotg` of `master`. `gemv`
-scales `y` by `β` (`betaMul`: zeros when `β = 0`) and then adds the columns of `A`; `gemvT` and
-`gemvC` add `α` times the `dotu` or `dotc` of each column with `x`; `geru` and `gerc` skip the
-columns `j` with `y[j] = 0`, as the reference BLAS does. `hemv`, `her` and `her2` follow
+flags, not with the arithmetic of `ComplexFloat`. A product (`BLAS.ComplexFloat64.mul`) is the
+textbook formula `(a.re * b.re - a.im * b.im, a.re * b.im + a.im * b.re)`, except that when both of
+its parts are `NaN` it recovers the infinities as `__muldc3` of libgcc does, and a quotient
+(`BLAS.ComplexFloat64.div`) is `__divdc3`, Smith's algorithm with scaling and the same recovery
+(`__mulsc3` and `__divsc3` in `ComplexFloat32`). A real `r` in a product or quotient with a complex
+number is the complex number `(r, 0)`, as the Fortran rules of mixed arithmetic make it, so that
+`rot` (`zdrot`) and the `α` of `her` multiply as complex numbers; only `rscal` (`zdscal`) scales
+both parts. `NaN` results match as `NaN`s, not in sign or payload. `dotc` multiplies by the
+conjugate with its negated imaginary part. `asum` and `iamax` use `|re| + |im|`, `nrm2` is Blue's
+algorithm on the real part and then the imaginary part of each element, and `rotg` is the `zrotg` of
+`master`. `gemv` scales `y` by `β` (`betaMul`: zeros when `β = 0`) and then adds the columns of `A`;
+`gemvT` and `gemvC` add `α` times the `dotu` or `dotc` of each column with `x`; `geru` and `gerc`
+skip the columns `j` with `y[j] = 0`, as the reference BLAS does. `hemv`, `her` and `her2` follow
 `zhemv`, `zher` and `zher2`: they use only the real part of the diagonal of `A`, `her` and `her2`
 set its imaginary part to `0` (even in a column skipped for a zero `x[j]`, or `x[j]` and `y[j]`),
-and `her2` adds the `x` term and then the `y` term to each element. They were checked bit for bit against the
-Netlib BLAS compiled with gfortran `-O2`.
+and `her2` adds the `x` term and then the `y` term to each element. They were checked bit for bit
+against the Netlib BLAS 3.12 compiled with gfortran `-O2`, on random data with infinities, `NaN`s,
+signed zeros and subnormals mixed in.
 
 ## Conformance
 
