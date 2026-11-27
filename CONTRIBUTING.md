@@ -28,10 +28,11 @@ speed on the others. No change may alter the Reference BLAS order of operations.
 
 ## Generated files
 
-The `Float32` routines, tests and benchmarks are generated from the `Float64` versions. Edit only
-the templates, `BatteriesBLAS/Float64.lean`, `BatteriesBLAS/Float64/`,
-`BatteriesBLASTest/Float64.lean`, `BatteriesBLASTest/Float64/` and
-`BatteriesBLASBench/Float64.lean`, then regenerate the `Float32` files:
+The `Float32` routines, tests and benchmarks are generated from the `Float64` versions, and the
+`ComplexFloat32` ones from the `ComplexFloat64` versions. Edit only the templates,
+`BatteriesBLAS/Float64.lean`, `BatteriesBLAS/Float64/`, `BatteriesBLAS/ComplexFloat64.lean`,
+`BatteriesBLAS/ComplexFloat64/`, the matching files under `BatteriesBLASTest/` and
+`BatteriesBLASBench/Float64.lean`, then regenerate the single-precision files:
 
 ```sh
 python3 scripts/generate.py           # regenerate
@@ -44,8 +45,8 @@ the `SPECIFIC` table of the script, which fails if such text is left over. `Floa
 generated line to fit. Anything that doesn't name an element type, such as the `USize` index
 lemmas, goes in `BatteriesBLAS/Internal.lean` instead. Routines that mix the two precisions, such
 as `dsdot` and `sdsdot`, are hand-written in `BatteriesBLAS/Mixed.lean`, with their tests in
-`BatteriesBLASTest/Mixed.lean`; don't put them under `BatteriesBLAS/Float32/`, whose untemplated
-files the script removes.
+`BatteriesBLASTest/Mixed.lean`; don't put them under `BatteriesBLAS/Float32/` or
+`BatteriesBLAS/ComplexFloat32/`, whose untemplated files the script removes.
 
 ## Files
 

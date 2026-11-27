@@ -2,15 +2,16 @@
 # Copyright © 2026 François G. Dorais. All rights reserved.
 # Released under Apache 2.0 license as described in the file LICENSE.
 """
-Generates the `Float32` routines, their tests and their benchmarks from the `Float64` versions.
+Generates the `Float32` routines, their tests and their benchmarks from the `Float64` versions,
+and the `ComplexFloat32` ones from the `ComplexFloat64` versions.
 
-`Float64.lean` and `Float64/` in `BatteriesBLAS`, `BatteriesBLASTest` and
-`BatteriesBLASBench` are the templates: make
-changes there, then run this script from anywhere to regenerate the `Float32` files, the root
-import lists and `.gitattributes`, which marks the generated files so that GitHub
-collapses them in diffs.
+`Float64.lean`, `Float64/`, `ComplexFloat64.lean` and `ComplexFloat64/` in `BatteriesBLAS`,
+`BatteriesBLASTest` and `BatteriesBLASBench` are the templates: make changes there, then run this
+script from anywhere to regenerate the `Float32` and `ComplexFloat32` files, the root import lists
+and `.gitattributes`, which marks the generated files so that GitHub collapses them in diffs.
 
-Most of the translation is mechanical: `Float64` becomes `Float32`, `Float` becomes `Float32` and
+Most of the translation is mechanical: `Float64` becomes `Float32` (so `ComplexFloat64` becomes
+`ComplexFloat32`), `Float` becomes `Float32`, `ComplexFloat` becomes `ComplexFloat32` and
 `Nat.toFloat` becomes `Nat.toFloat32`. Text that depends on the precision, such as the constants of
 Blue's algorithm in `nrm2`, test values beyond the range of `Float32` and test tolerances, is
 translated by the table `SPECIFIC`. The script fails if precision-dependent text is left over: a
@@ -28,6 +29,9 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 # The directories and modules that are templates, relative to the repository root.
 LIBS = ['BatteriesBLAS', 'BatteriesBLASTest', 'BatteriesBLASBench']
+
+# The precisions that are templates, and their generated counterparts.
+KINDS = [('Float64', 'Float32'), ('ComplexFloat64', 'ComplexFloat32')]
 
 # Precision-dependent text: each entry is the `Float64` text and its `Float32` translation, which
 # replaces it before the mechanical translation. An entry need not occur in the templates: the
@@ -83,6 +87,16 @@ SPECIFIC = [
   ('public def rgamsq : Float := 5.9604645e-8', 'public def rgamsq : Float := 5.96046e-8'),
   # The test of `symm` for columns that are 4 KiB apart.
   ('symmMatchesLd 512', 'symmMatchesLd 1024'),
+  # The tests of the complex `nrm2` with parts whose squares overflow or underflow.
+  ('[c (Float.scaleB 3 600) (Float.scaleB 4 600)]) ==\n  Float.scaleB 5 600',
+   '[c (Float.scaleB 3 80) (Float.scaleB 4 80)]) ==\n  Float.scaleB 5 80'),
+  ('[c (Float.scaleB 3 (-600)) (Float.scaleB 4 (-600))]',
+   '[c (Float.scaleB 3 (-80)) (Float.scaleB 4 (-80))]'),
+  # The tests of the complex `iamax` whose sums `|re| + |im|` overflow.
+  ('c 1e308 1e308, c 1.5e308 1.5e308]', 'c 2e38 2e38, c 3e38 3e38]'),
+  ('c 1.5e308 1.5e308, c 1e308 1e308]', 'c 3e38 3e38, c 2e38 2e38]'),
+  # The tolerance of the complex `rotg`.
+  ('< 1e-15', '< 1e-6'),
   # The tests of `rotg` whose squares overflow or underflow.
   ('Float.scaleB 3 1000) (Float.scaleB 4 1000)).r == Float.scaleB 5 1000',
    'Float.scaleB 3 120) (Float.scaleB 4 120)).r == Float.scaleB 5 120'),
@@ -94,10 +108,18 @@ SPECIFIC = [
 MECHANICAL = [
   (r'Float64', 'Float32'),
   (r'\bFloat\b', 'Float32'),
+  (r'\bComplexFloat\b', 'ComplexFloat32'),
   (r'\.toFloat\b', '.toFloat32'),
   # The names of the reference routines, in prose: `drotg` becomes `srotg`, `idamax` `isamax`.
   (r'`d(rotg|rotmg|rotm|rot|nrm2|dot|axpy|scal|copy|swap|asum|gemv|ger|trsv|gemm)\b', r'`s\1'),
   (r'`idamax\b', '`isamax'),
+  # The complex routines: `zaxpy` becomes `caxpy`, `dznrm2` `scnrm2`, `izamax` `icamax`.
+  (r'`z(rotg|axpy|scal|copy|swap|dotu|dotc|gemv|gerc|geru|hemv|her|her2|trmv|trsv|gemm|hemm|herk|'
+   r'her2k|symm|syrk|syr2k|trmm|trsm)\b', r'`c\1'),
+  (r'`zd(scal|rot)\b', r'`cs\1'),
+  (r'`dz(nrm2|asum)\b', r'`sc\1'),
+  (r'`izamax\b', '`icamax'),
+  (r'`dcabs1\b', '`scabs1'),
 ]
 
 # Precision-dependent text that `SPECIFIC` should have translated.
@@ -113,9 +135,10 @@ def templates():
     """Maps the paths of the templates, relative to the repository root, to their contents."""
     files = {}
     for lib in LIBS:
-        files[f'{lib}/Float64.lean'] = None
-        for p in sorted((ROOT / lib / 'Float64').rglob('*.lean')):
-            files[str(p.relative_to(ROOT))] = None
+        for kind, _ in KINDS:
+            files[f'{lib}/{kind}.lean'] = None
+            for p in sorted((ROOT / lib / kind).rglob('*.lean')):
+                files[str(p.relative_to(ROOT))] = None
     return {p: (ROOT / p).read_text() for p in files if (ROOT / p).exists()}
 
 
@@ -135,15 +158,20 @@ def translate(path, s, used):
 
 
 def root_imports(path):
-    """The root module `path`, with its imports of `{lib}.Float64` followed by `Float32`."""
+    """
+    The root module `path`, with each of its imports of a template `{lib}.Float64` or
+    `{lib}.ComplexFloat64` followed by the generated one.
+    """
     s = (ROOT / path).read_text()
     lib = path.removesuffix('.lean')
     old = f'import {lib}.Float64\n'
     assert old in s, f'{path}: no import of {lib}.Float64'
-    s = re.sub(rf'^((?:public )?import {lib}\.Float32\n)', '', s, flags=re.M)
-    return re.sub(rf'^((?:public )?)import {lib}\.Float64\n',
-                  lambda m: f'{m.group(1)}import {lib}.Float64\n{m.group(1)}import {lib}.Float32\n',
-                  s, flags=re.M)
+    for kind, gen in KINDS:
+        s = re.sub(rf'^((?:public )?import {lib}\.{gen}\n)', '', s, flags=re.M)
+        s = re.sub(rf'^((?:public )?)import {lib}\.{kind}\n',
+                   lambda m: f'{m.group(1)}import {lib}.{kind}\n{m.group(1)}import {lib}.{gen}\n',
+                   s, flags=re.M)
+    return s
 
 
 def generate():
@@ -158,10 +186,11 @@ def generate():
     for lib in LIBS:
         files[f'{lib}.lean'] = root_imports(f'{lib}.lean')
     files['.gitattributes'] = (
-        '# Files generated by `scripts/generate.py` from the `Float64` templates.\n'
+        '# Files generated by `scripts/generate.py` from the `Float64` and `ComplexFloat64`\n'
+        '# templates.\n'
         '# GitHub collapses them in diffs.\n'
-        + ''.join(f'{lib}/Float32.lean linguist-generated\n{lib}/Float32/** linguist-generated\n'
-                  for lib in LIBS))
+        + ''.join(f'{lib}/{gen}.lean linguist-generated\n{lib}/{gen}/** linguist-generated\n'
+                  for lib in LIBS for _, gen in KINDS))
     return files
 
 
@@ -178,7 +207,7 @@ def main():
                 file.write_text(contents)
     # Generated files whose template is gone.
     for lib in LIBS:
-        for p in sorted((ROOT / lib / 'Float32').rglob('*.lean')):
+        for p in sorted(q for _, gen in KINDS for q in (ROOT / lib / gen).rglob('*.lean')):
             path = str(p.relative_to(ROOT))
             if path not in files:
                 stale.append(path)
