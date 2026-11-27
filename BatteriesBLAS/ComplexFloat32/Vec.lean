@@ -48,10 +48,10 @@ namespace Vec
 variable {n : Nat}
 
 /-- The indices `2 * off + 2 * inc * i` of the real parts, as a scalar-arrays `Stride`. -/
-@[expose] public def reStride (x : Vec n) : Stride := ⟨2 * x.off, 2 * x.inc⟩
+@[expose, inline] public def reStride (x : Vec n) : Stride := ⟨2 * x.off, 2 * x.inc⟩
 
 /-- The indices `2 * off + 1 + 2 * inc * i` of the imaginary parts, as a scalar-arrays `Stride`. -/
-@[expose] public def imStride (x : Vec n) : Stride := ⟨2 * x.off + 1, 2 * x.inc⟩
+@[expose, inline] public def imStride (x : Vec n) : Stride := ⟨2 * x.off + 1, 2 * x.inc⟩
 
 public theorem idx_reStride (x : Vec n) (i : Nat) :
     x.reStride.idx i = 2 * x.off + 2 * x.inc * i := rfl

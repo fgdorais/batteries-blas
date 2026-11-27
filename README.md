@@ -21,20 +21,25 @@ routines `axpy`, `scal`, `rscal` (`zdscal`), `copy`, `swap`, `dotu`, `dotc`, `as
 [batteries-complex-float](https://github.com/fgdorais/batteries-complex-float). A complex vector
 stores its elements interleaved in a `Float64Array` (or `Float32Array`), the real part of each
 element followed by its imaginary part, as Fortran and C do; its offset and stride count elements.
-Complex matrices, `BLAS.ComplexFloat64.Mat m n`, are stored the same way in column-major order,
-with an offset and a leading dimension counted in elements. On them it has `gemv`, `gemvT` and
-`gemvC` (`zgemv` with `TRANS = 'N'`, `'T'` and `'C'`), `geru` and `gerc`, and the Hermitian
-`hemv`, `her` and `her2`, which read and update the upper triangle of `A` (`.upper`) or its
-lower triangle, and the triangular `trmv`, `trmvT`, `trmvC`, `trsv`, `trsvT` and `trsvC` (`ztrmv`
-and `ztrsv`), with a unit diagonal (`.unit`) or not. On Level 3 it has `gemm` (`zgemm`) with each
-factor as it is, transposed or conjugated and transposed: `gemm`, `gemmNT`, `gemmNC`, `gemmTN`,
-`gemmTT`, `gemmTC`, `gemmCN`, `gemmCT` and `gemmCC`, where the first letter is for `A` and the
-second for `B`, and the Hermitian `hemm` and `hemmRight` (`zhemm` with `SIDE = 'L'` and `'R'`),
-`herk` and `herkC` (`zherk` with `TRANS = 'N'` and `'C'`), and `her2k` and `her2kC` (`zher2k`),
-and the complex symmetric `symm` and `symmRight` (`zsymm`), `syrk` and `syrkT` (`zsyrk` with
-`TRANS = 'N'` and `'T'`), and `syr2k` and `syr2kT` (`zsyr2k`), and the triangular `trmm`,
-`trmmT` and `trmmC`, and `trmmRight`, `trmmRightT` and `trmmRightC` (`ztrmm` with `SIDE = 'L'`
-and `'R'`), and `trsm`, `trsmT`, `trsmC`, `trsmRight`, `trsmRightT` and `trsmRightC` (`ztrsm`).
+Complex matrices, `BLAS.ComplexFloat64.Mat m n`, are stored the same way in column-major order, with
+an offset and a leading dimension counted in elements. On them it has `gemv`, `gemvT` and `gemvC`
+(`zgemv` with `TRANS = 'N'`, `'T'` and `'C'`), `geru` and `gerc`, and the Hermitian `hemv`, `her`
+and `her2`, which read and update the upper triangle of `A` (`.upper`) or its lower triangle, and
+the triangular `trmv`, `trmvT`, `trmvC`, `trsv`, `trsvT` and `trsvC` (`ztrmv` and `ztrsv`), with a
+unit diagonal (`.unit`) or not. On band matrices, stored as in the reference BLAS, it has `gbmv`,
+`gbmvT` and `gbmvC` (`zgbmv`), the Hermitian `hbmv` (`zhbmv`), and the triangular `tbmv`, `tbmvT`,
+`tbmvC`, `tbsv`, `tbsvT` and `tbsvC` (`ztbmv` and `ztbsv`). On packed triangles, `ap : Vec (n * (n +
+1) / 2)` as in the reference BLAS, it has the Hermitian `hpmv`, `hpr` and `hpr2` (`zhpmv`, `zhpr`
+and `zhpr2`) and the triangular `tpmv`, `tpmvT`, `tpmvC`, `tpsv`, `tpsvT` and `tpsvC` (`ztpmv` and
+`ztpsv`). On Level 3 it has `gemm` (`zgemm`) with each factor as it is, transposed or conjugated and
+transposed: `gemm`, `gemmNT`, `gemmNC`, `gemmTN`, `gemmTT`, `gemmTC`, `gemmCN`, `gemmCT` and
+`gemmCC`, where the first letter is for `A` and the second for `B`, and the Hermitian `hemm` and
+`hemmRight` (`zhemm` with `SIDE = 'L'` and `'R'`), `herk` and `herkC` (`zherk` with `TRANS = 'N'`
+and `'C'`), and `her2k` and `her2kC` (`zher2k`), and the complex symmetric `symm` and `symmRight`
+(`zsymm`), `syrk` and `syrkT` (`zsyrk` with `TRANS = 'N'` and `'T'`), and `syr2k` and `syr2kT`
+(`zsyr2k`), and the triangular `trmm`, `trmmT` and `trmmC`, and `trmmRight`, `trmmRightT` and
+`trmmRightC` (`ztrmm` with `SIDE = 'L'` and `'R'`), and `trsm`, `trsmT`, `trsmC`, `trsmRight`,
+`trsmRightT` and `trsmRightC` (`ztrsm`).
 
 ## Usage
 
@@ -330,28 +335,33 @@ loops of `master`, without the zero skips of LAPACK 3.12: `trmv` and `trsv` upda
 in the triangle by a multiple of each column, from the first column for the upper `trmv` and the
 lower `trsv` and from the last one otherwise, and `trmvT`, `trmvC`, `trsvT` and `trsvC` set each
 element to a sum over its column, from the diagonal outwards in the products and towards it in the
-solves, with the elements of `A` conjugated in `trmvC` and `trsvC`. `gemm` and its variants run
-the loops of `zgemm`: with `A` as it is, each column of `C` is scaled by `β` (`betaMul`) and then
-gets `mul (mul α b) A[i, l]` for each `l` in increasing order, where `b` is the element `(l, j)` of
-`B`, `Bᵀ` or `Bᴴ`; with `A` transposed, each element is `mul α t`, plus `mul β C[i, j]` unless
-`β = 0` (even when `β = 1`), where `t` is the sum from `0` of the products in the order of `l`,
-and `C` is returned as it is when `α = 0` or `k = 0`, and `β = 1`. `hemm`, `hemmRight`, `herk`,
-`herkC`, `her2k` and `her2kC` run the loops of `zhemm`, `zherk` and `zher2k`: they read only the
-real part of the diagonal of a Hermitian `A`, `herk` and `her2k` keep the skips of the terms with
-`A[j, l] = 0` (and `B[j, l] = 0`) of `master`, multiply by the real `α` and `β` of `herk` as the
-complex numbers `(α, 0)` and `(β, 0)`, and set the imaginary part of the diagonal of `C` to `0`
-unless they return early. `symm`, `symmRight`, `syrk`, `syrkT`, `syr2k` and `syr2kT` run the
-loops of `zsymm`, `zsyrk` and `zsyr2k` in the same way, with nothing conjugated, complex `α` and
-`β`, and the diagonal updated as the rest of the triangle. `trmm` and its variants run the loops
-of `ztrmm` in `master`, without the zero skips of LAPACK 3.12: each read of `B` in those loops sees
-an element they haven't written yet, so these read `B` as it is given and write a copy of it,
-updated in place. `trsm` and its variants run the loops of `ztrsm` in `master`, without the zero
-skips, the `α = 1` skips and the multiplications by `1 / A[j, j]` of LAPACK 3.12: on the left each
-column of `B` is solved for by `trsv` or by the loops of `ztrsm` for the transposed forms, and on
-the right their specifications are the solutions of systems for the rows of `B`, solved by the
-column operations of `ztrsm` in the same order. They were checked bit for bit
-against the Netlib BLAS 3.12 compiled with gfortran `-O2`, on random data with infinities, `NaN`s,
-signed zeros and subnormals mixed in.
+solves, with the elements of `A` conjugated in `trmvC` and `trsvC`. The band routines run the loops
+of `zgbmv`, `zhbmv`, `ztbmv` and `ztbsv` in `master` over the band of each column, in the same way
+as their dense counterparts, without the zero skips of LAPACK 3.12 in `ztbmv` and `ztbsv`. The
+packed routines run the loops of `zhpmv`, `zhpr`, `zhpr2`, `ztpmv` and `ztpsv` in the same way over
+the columns of the packed triangle, with the skips of the columns with `x[j] = 0` (and `y[j] = 0`)
+of `zhpr` and `zhpr2`, which still set the imaginary part of their diagonal element to `0`. `gemm`
+and its variants run the loops of `zgemm`: with `A` as it is, each column of `C` is scaled by `β`
+(`betaMul`) and then gets `mul (mul α b) A[i, l]` for each `l` in increasing order, where `b` is the
+element `(l, j)` of `B`, `Bᵀ` or `Bᴴ`; with `A` transposed, each element is `mul α t`, plus `mul β
+C[i, j]` unless `β = 0` (even when `β = 1`), where `t` is the sum from `0` of the products in the
+order of `l`, and `C` is returned as it is when `α = 0` or `k = 0`, and `β = 1`. `hemm`,
+`hemmRight`, `herk`, `herkC`, `her2k` and `her2kC` run the loops of `zhemm`, `zherk` and `zher2k`:
+they read only the real part of the diagonal of a Hermitian `A`, `herk` and `her2k` keep the skips
+of the terms with `A[j, l] = 0` (and `B[j, l] = 0`) of `master`, multiply by the real `α` and `β` of
+`herk` as the complex numbers `(α, 0)` and `(β, 0)`, and set the imaginary part of the diagonal of
+`C` to `0` unless they return early. `symm`, `symmRight`, `syrk`, `syrkT`, `syr2k` and `syr2kT` run
+the loops of `zsymm`, `zsyrk` and `zsyr2k` in the same way, with nothing conjugated, complex `α` and
+`β`, and the diagonal updated as the rest of the triangle. `trmm` and its variants run the loops of
+`ztrmm` in `master`, without the zero skips of LAPACK 3.12: each read of `B` in those loops sees an
+element they haven't written yet, so these read `B` as it is given and write a copy of it, updated
+in place. `trsm` and its variants run the loops of `ztrsm` in `master`, without the zero skips, the
+`α = 1` skips and the multiplications by `1 / A[j, j]` of LAPACK 3.12: on the left each column of
+`B` is solved for by `trsv` or by the loops of `ztrsm` for the transposed forms, and on the right
+their specifications are the solutions of systems for the rows of `B`, solved by the column
+operations of `ztrsm` in the same order. They were checked bit for bit against the Netlib BLAS 3.12
+compiled with gfortran `-O2`, on random data with infinities, `NaN`s, signed zeros and subnormals
+mixed in.
 
 ## Conformance
 
