@@ -178,7 +178,7 @@ when `α = 0`, and otherwise runs `gemmNCol` for each column in increasing order
   else Nat.fold n (fun j hj C => gemmNCol α A b β C j hj) C
 
 /-- A fold of steps that each change one column, the column of the step, from the original. -/
-private theorem getElem_fold_col (g : (j : Nat) → j < n → Mat m n → Mat m n)
+public theorem getElem_fold_col (g : (j : Nat) → j < n → Mat m n → Mat m n)
     (φ : (i j : Nat) → i < m ∧ j < n → ComplexFloat → ComplexFloat)
     (hg : ∀ j hj (B : Mat m n) i j' (hij : i < m ∧ j' < n),
       (g j hj B)[(i, j')] = if j' = j then φ i j ⟨hij.1, hj⟩ B[(i, j')] else B[(i, j')])

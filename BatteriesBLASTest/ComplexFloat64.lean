@@ -9,3 +9,4 @@ import BatteriesBLASTest.ComplexFloat64.Level2
 import BatteriesBLASTest.ComplexFloat64.Herm
 import BatteriesBLASTest.ComplexFloat64.Tri
 import BatteriesBLASTest.ComplexFloat64.Gemm
+import BatteriesBLASTest.ComplexFloat64.Herm3
