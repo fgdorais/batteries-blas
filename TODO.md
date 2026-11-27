@@ -131,6 +131,10 @@ in `Nat`.
   array, without building the slices.
 - [ ] `hbmv` makes two passes over each column, as `hemv` does (0.3× with 16 off-diagonals).
 
+`hpmv`, `hpr`, `hpr2`, `tpmv`, `tpmvT`, `tpmvC`, `tpsv`, `tpsvT` and `tpsvC` run at 0.6–0.85× the
+speed of the Netlib BLAS at 512 on the cloud Xeon (0.24–0.53 ms against 0.18–0.35), one column of
+the packed triangle per step, with the same passes as their dense counterparts.
+
 ## Complex Level 3
 
 `gemm` and its variants run at 0.5–0.95× the speed of the Netlib BLAS on the cloud Xeon: at 512,

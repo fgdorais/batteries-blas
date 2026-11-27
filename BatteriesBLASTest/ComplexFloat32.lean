@@ -14,3 +14,4 @@ import BatteriesBLASTest.ComplexFloat32.Symm3
 import BatteriesBLASTest.ComplexFloat32.Trmm3
 import BatteriesBLASTest.ComplexFloat32.Trsm3
 import BatteriesBLASTest.ComplexFloat32.Band
+import BatteriesBLASTest.ComplexFloat32.Packed
