@@ -110,6 +110,11 @@ real `gemv` does, would read and write `y` less often.
 `hemv`, `her` and `her2` run at 0.5–0.7× the speed of the Netlib BLAS at 512 (2.4–3.9 against
 4.9–6.4 GFLOP/s), with the products of libgcc.
 
+`trmv`, `trmvT`, `trmvC`, `trsv`, `trsvT` and `trsvC` run at 3.2–3.7 GFLOP/s at 512, against
+3.4–5.2 for the Netlib BLAS (0.7–1.0×), one column per step.
+
+- [ ] Triangular: several columns per step, as the real `trsvT` and `trmvT` take four rows per pass,
+  with each element's terms in their order.
 - [ ] `hemv` makes two passes over each column, the `axpy` into `y` and the dot product with `x`,
   where the reference makes one; fusing them, with each sum in its order, would read the column
   once.

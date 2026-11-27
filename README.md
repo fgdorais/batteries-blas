@@ -25,7 +25,8 @@ Complex matrices, `BLAS.ComplexFloat64.Mat m n`, are stored the same way in colu
 with an offset and a leading dimension counted in elements. On them it has `gemv`, `gemvT` and
 `gemvC` (`zgemv` with `TRANS = 'N'`, `'T'` and `'C'`), `geru` and `gerc`, and the Hermitian
 `hemv`, `her` and `her2`, which read and update the upper triangle of `A` (`.upper`) or its
-lower triangle.
+lower triangle, and the triangular `trmv`, `trmvT`, `trmvC`, `trsv`, `trsvT` and `trsvC` (`ztrmv`
+and `ztrsv`), with a unit diagonal (`.unit`) or not.
 
 ## Usage
 
@@ -316,7 +317,12 @@ algorithm on the real part and then the imaginary part of each element, and `rot
 skip the columns `j` with `y[j] = 0`, as the reference BLAS does. `hemv`, `her` and `her2` follow
 `zhemv`, `zher` and `zher2`: they use only the real part of the diagonal of `A`, `her` and `her2`
 set its imaginary part to `0` (even in a column skipped for a zero `x[j]`, or `x[j]` and `y[j]`),
-and `her2` adds the `x` term and then the `y` term to each element. They were checked bit for bit
+and `her2` adds the `x` term and then the `y` term to each element. The triangular routines run the
+loops of `master`, without the zero skips of LAPACK 3.12: `trmv` and `trsv` update the part of `x`
+in the triangle by a multiple of each column, from the first column for the upper `trmv` and the
+lower `trsv` and from the last one otherwise, and `trmvT`, `trmvC`, `trsvT` and `trsvC` set each
+element to a sum over its column, from the diagonal outwards in the products and towards it in the
+solves, with the elements of `A` conjugated in `trmvC` and `trsvC`. They were checked bit for bit
 against the Netlib BLAS 3.12 compiled with gfortran `-O2`, on random data with infinities, `NaN`s,
 signed zeros and subnormals mixed in.
 
