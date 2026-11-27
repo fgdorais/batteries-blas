@@ -150,6 +150,14 @@ their Hermitian counterparts.
 - [ ] `symm` (0.5×) and `syr2k` have the same two passes as `hemm` and `her2k`; the same fusions
   would apply.
 
+`trmm` and its variants run at 0.45–0.85× the speed of the Netlib BLAS at 512 on the cloud Xeon
+(2.0–4.1 GFLOP/s against 3.9–6.4): 0.45–0.65× for `trmm` (`A` as it is), and 0.7–0.85× for the
+others.
+
+- [ ] `trmm` writes the diagonal element of each step with a write of its own, after the `axpy`
+  of the column; folding it into the same pass, or several rows per pass, as the real `trmm` does,
+  would read and write the column less often.
+
 ## Level 2 (0.9–1.3× at 1024 and 2048, 1.2–1.8× at 256)
 
 - [x] `trmvT`: four elements per pass, which share the reads of `x`, each with its terms in their

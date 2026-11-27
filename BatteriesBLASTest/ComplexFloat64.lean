@@ -11,3 +11,4 @@ import BatteriesBLASTest.ComplexFloat64.Tri
 import BatteriesBLASTest.ComplexFloat64.Gemm
 import BatteriesBLASTest.ComplexFloat64.Herm3
 import BatteriesBLASTest.ComplexFloat64.Symm3
+import BatteriesBLASTest.ComplexFloat64.Trmm3
