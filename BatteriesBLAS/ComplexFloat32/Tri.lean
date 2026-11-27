@@ -38,10 +38,10 @@ variable {n : Nat}
   ⟨op z.re w.re, op z.im w.im⟩
 
 /--
-The loop of `acc` from the index `i`, up to the bound `m`, which is `n`, with the parts `sr` and
-`si` of the sum so far: it combines it with `mul (p x[i]) y[i]` by `op`.
+The loop of `accWith` from the index `i`, up to the bound `m`, which is `n`, with the parts `sr`
+and `si` of the sum so far: it combines it with `mul (p x[i]) (q y[i])` by `op`.
 -/
-@[specialize] public def accLoop (p : ComplexFloat32 → ComplexFloat32)
+@[specialize] public def accLoop (p q : ComplexFloat32 → ComplexFloat32)
     (op : Float32 → Float32 → Float32)
     (x y : Vec n) (xo xo1 xc yo yo1 yc : USize) (hxo : (2 * x.off).toUSize = xo)
     (hxo1 : (2 * x.off + 1).toUSize = xo1) (hxc : (2 * x.inc).toUSize = xc)
@@ -50,11 +50,11 @@ The loop of `acc` from the index `i`, up to the bound `m`, which is `n`, with th
     (m : USize) (hm : m.toNat = n) (i : USize) (sr si : Float32) : ComplexFloat32 :=
   if hi : i < m then
     let u := p (x.uget xo xo1 xc hxo hxo1 hxc hs.1 i (hm ▸ hi))
-    let v := y.uget yo yo1 yc hyo hyo1 hyc hs.2 i (hm ▸ hi)
+    let v := q (y.uget yo yo1 yc hyo hyo1 hyc hs.2 i (hm ▸ hi))
     let tr := u.re * v.re - u.im * v.im
     let ti := u.re * v.im + u.im * v.re
     let ok := tr == tr || ti == ti
-    accLoop p op x y xo xo1 xc yo yo1 yc hxo hxo1 hxc hyo hyo1 hyc hs m hm (i + 1)
+    accLoop p q op x y xo xo1 xc yo yo1 yc hxo hxo1 hxc hyo hyo1 hyc hs m hm (i + 1)
       (op sr (if ok then tr else mulRecoverRe u.re u.im v.re v.im))
       (op si (if ok then ti else mulRecoverIm u.re u.im v.re v.im))
   else ⟨sr, si⟩
@@ -75,16 +75,17 @@ private theorem opC_mul (p : ComplexFloat32 → ComplexFloat32) (op : Float32 �
   simp only [opC, mul, mulRecoverRe, mulRecoverIm]
   split <;> rfl
 
-private theorem accLoop_eq (p : ComplexFloat32 → ComplexFloat32) (op : Float32 → Float32 → Float32)
+private theorem accLoop_eq (p q : ComplexFloat32 → ComplexFloat32)
+    (op : Float32 → Float32 → Float32)
     (x y : Vec n) (xo xo1 xc yo yo1 yc : USize) (hxo : (2 * x.off).toUSize = xo)
     (hxo1 : (2 * x.off + 1).toUSize = xo1) (hxc : (2 * x.inc).toUSize = xc)
     (hyo : (2 * y.off).toUSize = yo) (hyo1 : (2 * y.off + 1).toUSize = yo1)
     (hyc : (2 * y.inc).toUSize = yc) (hs : x.data.size < USize.size ∧ y.data.size < USize.size)
     (m : USize) (hm : m.toNat = n) (i : USize) (sr si : Float32) (z : ComplexFloat32) (j : Nat)
     (hj : i.toNat = j) (hjn : j ≤ n)
-    (hacc : Nat.fold j (fun l hl s => opC op s (mul (p x[l]) y[l])) z = ⟨sr, si⟩) :
-    accLoop p op x y xo xo1 xc yo yo1 yc hxo hxo1 hxc hyo hyo1 hyc hs m hm i sr si =
-      Nat.fold n (fun l hl s => opC op s (mul (p x[l]) y[l])) z := by
+    (hacc : Nat.fold j (fun l hl s => opC op s (mul (p x[l]) (q y[l]))) z = ⟨sr, si⟩) :
+    accLoop p q op x y xo xo1 xc yo yo1 yc hxo hxo1 hxc hyo hyo1 hyc hs m hm i sr si =
+      Nat.fold n (fun l hl s => opC op s (mul (p x[l]) (q y[l]))) z := by
   obtain ⟨d, hd⟩ : ∃ d, n - j = d := ⟨_, rfl⟩
   induction d generalizing i sr si j with
   | zero =>
@@ -160,24 +161,38 @@ private theorem accRevLoop_eq (p : ComplexFloat32 → ComplexFloat32)
     exact (opC_mul ..).symm
 
 /--
+`Nat.fold n (fun l _ s => opC op s (mul (p x[l]) (q y[l]))) z`: the sum `z` combined by `op` with
+the products `mul (p x[l]) (q y[l])` for `l = 0, …, n - 1`, by `accLoop`.
+-/
+@[inline] public def accWith (p q : ComplexFloat32 → ComplexFloat32)
+    (op : Float32 → Float32 → Float32)
+    (z : ComplexFloat32) (x y : Vec n) : ComplexFloat32 :=
+  if hs : x.data.size < USize.size ∧ y.data.size < USize.size then
+    accLoop p q op x y _ _ _ _ _ _ rfl rfl rfl rfl rfl rfl hs n.toUSize (x.toNat_toUSize hs.1)
+      0 z.re z.im
+  else Nat.fold n (fun l _ s => opC op s (mul (p x[l]) (q y[l]))) z
+
+public theorem accWith_eq (p q : ComplexFloat32 → ComplexFloat32) (op : Float32 → Float32 → Float32)
+    (z : ComplexFloat32) (x y : Vec n) :
+    accWith p q op z x y = Nat.fold n (fun l _ s => opC op s (mul (p x[l]) (q y[l]))) z := by
+  unfold accWith
+  split
+  · exact accLoop_eq p q op x y _ _ _ _ _ _ rfl rfl rfl rfl rfl rfl _ _ _ _ _ _ z 0 (by simp)
+      (by lia) (by simp)
+  · rfl
+
+/--
 `Nat.fold n (fun l _ s => opC op s (mul (p x[l]) y[l])) z`: the sum `z` combined by `op` with the
 products `mul (p x[l]) y[l]` for `l = 0, …, n - 1`, by `accLoop`.
 -/
 @[inline] public def acc (p : ComplexFloat32 → ComplexFloat32) (op : Float32 → Float32 → Float32)
     (z : ComplexFloat32) (x y : Vec n) : ComplexFloat32 :=
-  if hs : x.data.size < USize.size ∧ y.data.size < USize.size then
-    accLoop p op x y _ _ _ _ _ _ rfl rfl rfl rfl rfl rfl hs n.toUSize (x.toNat_toUSize hs.1)
-      0 z.re z.im
-  else Nat.fold n (fun l _ s => opC op s (mul (p x[l]) y[l])) z
+  accWith p id op z x y
 
 public theorem acc_eq (p : ComplexFloat32 → ComplexFloat32) (op : Float32 → Float32 → Float32)
     (z : ComplexFloat32) (x y : Vec n) :
-    acc p op z x y = Nat.fold n (fun l _ s => opC op s (mul (p x[l]) y[l])) z := by
-  unfold acc
-  split
-  · exact accLoop_eq p op x y _ _ _ _ _ _ rfl rfl rfl rfl rfl rfl _ _ _ _ _ _ z 0 (by simp)
-      (by lia) (by simp)
-  · rfl
+    acc p op z x y = Nat.fold n (fun l _ s => opC op s (mul (p x[l]) y[l])) z :=
+  accWith_eq p id op z x y
 
 /--
 The sum `z` combined by `op` with the products `mul (p x[l]) y[l]` for `l = n - 1, …, 0`, by
@@ -419,7 +434,8 @@ public theorem getElem_trmv_lower (d : Float32.Diag) (A : Mat n n) (x : Vec n) (
 The step of `trmvTWith p .upper` for column `j`: `x[j]` becomes `x[j]` times `p A[j, j]`, plus
 `mul (p A[i, j]) x[i]` for `i = j - 1, …, 0`.
 -/
-@[expose, specialize] public def trmvTUpperCol (p : ComplexFloat32 → ComplexFloat32) (d : Float32.Diag)
+@[expose, specialize] public def trmvTUpperCol (p : ComplexFloat32 → ComplexFloat32)
+    (d : Float32.Diag)
     (A : Mat n n) (j : Nat) (hj : j < n) (x : Vec n) : Vec n :=
   let t := Vec.accRev p (· + ·) (diagMul d x[j] (p A[(j, j)])) ((A.col j hj).slice 0 j (by lia))
     (x.slice 0 j (by lia))
@@ -429,7 +445,8 @@ The step of `trmvTWith p .upper` for column `j`: `x[j]` becomes `x[j]` times `p 
 The step of `trmvTWith p .lower` for column `j`: `x[j]` becomes `x[j]` times `p A[j, j]`, plus
 `mul (p A[i, j]) x[i]` for `i = j + 1, …, n - 1`.
 -/
-@[expose, specialize] public def trmvTLowerCol (p : ComplexFloat32 → ComplexFloat32) (d : Float32.Diag)
+@[expose, specialize] public def trmvTLowerCol (p : ComplexFloat32 → ComplexFloat32)
+    (d : Float32.Diag)
     (A : Mat n n) (j : Nat) (hj : j < n) (x : Vec n) : Vec n :=
   let t := Vec.acc p (· + ·) (diagMul d x[j] (p A[(j, j)]))
     ((A.col j hj).slice (j + 1) (n - (j + 1)) (by lia)) (x.slice (j + 1) (n - (j + 1)) (by lia))
@@ -442,7 +459,8 @@ with each element of `A` mapped by `p`, by the loops of `ctrmv`: for the upper t
 `x[j]` times `p A[j, j]` (unless the diagonal is unit) plus the terms `mul (p A[i, j]) x[i]` of
 the other elements of column `j` in the triangle, from the diagonal outwards.
 -/
-@[expose, specialize] public def trmvTWith (p : ComplexFloat32 → ComplexFloat32) (uplo : Float32.Uplo)
+@[expose, specialize] public def trmvTWith (p : ComplexFloat32 → ComplexFloat32)
+    (uplo : Float32.Uplo)
     (d : Float32.Diag) (A : Mat n n) (x : Vec n) : Vec n :=
   match uplo with
   | .upper => Nat.fold n (fun k hk x => trmvTUpperCol p d A (n - 1 - k) (by lia) x) x
@@ -738,14 +756,16 @@ termination_by n - j
 decreasing_by lia
 
 /-- The step of `trsvTWith p .upper` for column `j`: solve for `x[j]` from the elements above. -/
-@[expose, specialize] public def trsvTUpperCol (p : ComplexFloat32 → ComplexFloat32) (d : Float32.Diag)
+@[expose, specialize] public def trsvTUpperCol (p : ComplexFloat32 → ComplexFloat32)
+    (d : Float32.Diag)
     (A : Mat n n) (j : Nat) (hj : j < n) (x : Vec n) : Vec n :=
   let t := diagDiv d (Vec.acc p (· - ·) x[j] ((A.col j hj).slice 0 j (by lia))
     (x.slice 0 j (by lia))) (p A[(j, j)])
   x.set j hj t
 
 /-- The step of `trsvTWith p .lower` for column `j`: solve for `x[j]` from the elements below. -/
-@[expose, specialize] public def trsvTLowerCol (p : ComplexFloat32 → ComplexFloat32) (d : Float32.Diag)
+@[expose, specialize] public def trsvTLowerCol (p : ComplexFloat32 → ComplexFloat32)
+    (d : Float32.Diag)
     (A : Mat n n) (j : Nat) (hj : j < n) (x : Vec n) : Vec n :=
   let t := diagDiv d (Vec.accRev p (· - ·) x[j]
     ((A.col j hj).slice (j + 1) (n - (j + 1)) (by lia)) (x.slice (j + 1) (n - (j + 1)) (by lia)))
@@ -759,7 +779,8 @@ maps each element of `A` by `p`, by the loops of `ctrsv`: for the upper triangle
 `x[j]` and divides it by `p A[j, j]` (`div`); for the lower triangle, it does the same from
 `j = n - 1` down to `0`, with the terms for `i = n - 1, …, j + 1`.
 -/
-@[expose, specialize] public def trsvTWith (p : ComplexFloat32 → ComplexFloat32) (uplo : Float32.Uplo)
+@[expose, specialize] public def trsvTWith (p : ComplexFloat32 → ComplexFloat32)
+    (uplo : Float32.Uplo)
     (d : Float32.Diag) (A : Mat n n) (x : Vec n) : Vec n :=
   match uplo with
   | .upper => Nat.fold n (fun j hj x => trsvTUpperCol p d A j hj x) x

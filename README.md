@@ -26,7 +26,10 @@ with an offset and a leading dimension counted in elements. On them it has `gemv
 `gemvC` (`zgemv` with `TRANS = 'N'`, `'T'` and `'C'`), `geru` and `gerc`, and the Hermitian
 `hemv`, `her` and `her2`, which read and update the upper triangle of `A` (`.upper`) or its
 lower triangle, and the triangular `trmv`, `trmvT`, `trmvC`, `trsv`, `trsvT` and `trsvC` (`ztrmv`
-and `ztrsv`), with a unit diagonal (`.unit`) or not.
+and `ztrsv`), with a unit diagonal (`.unit`) or not. On Level 3 it has `gemm` (`zgemm`) with each
+factor as it is, transposed or conjugated and transposed: `gemm`, `gemmNT`, `gemmNC`, `gemmTN`,
+`gemmTT`, `gemmTC`, `gemmCN`, `gemmCT` and `gemmCC`, where the first letter is for `A` and the
+second for `B`.
 
 ## Usage
 
@@ -322,7 +325,12 @@ loops of `master`, without the zero skips of LAPACK 3.12: `trmv` and `trsv` upda
 in the triangle by a multiple of each column, from the first column for the upper `trmv` and the
 lower `trsv` and from the last one otherwise, and `trmvT`, `trmvC`, `trsvT` and `trsvC` set each
 element to a sum over its column, from the diagonal outwards in the products and towards it in the
-solves, with the elements of `A` conjugated in `trmvC` and `trsvC`. They were checked bit for bit
+solves, with the elements of `A` conjugated in `trmvC` and `trsvC`. `gemm` and its variants run
+the loops of `zgemm`: with `A` as it is, each column of `C` is scaled by `β` (`betaMul`) and then
+gets `mul (mul α b) A[i, l]` for each `l` in increasing order, where `b` is the element `(l, j)` of
+`B`, `Bᵀ` or `Bᴴ`; with `A` transposed, each element is `mul α t`, plus `mul β C[i, j]` unless
+`β = 0` (even when `β = 1`), where `t` is the sum from `0` of the products in the order of `l`,
+and `C` is returned as it is when `α = 0` or `k = 0`, and `β = 1`. They were checked bit for bit
 against the Netlib BLAS 3.12 compiled with gfortran `-O2`, on random data with infinities, `NaN`s,
 signed zeros and subnormals mixed in.
 
