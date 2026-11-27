@@ -548,7 +548,7 @@ diagonal, and the diagonal element set to `fd c`, where `c` is the old value.
     else if InTri uplo i j then C.setAt i j ⟨hi, hj⟩ (f i hi C[(i, j)])
     else C) C
 
-private theorem getElem_setTriCol (uplo : Float32.Uplo)
+public theorem getElem_setTriCol (uplo : Float32.Uplo)
     (f : (i : Nat) → i < n → ComplexFloat32 → ComplexFloat32) (fd : ComplexFloat32 → ComplexFloat32)
     (C : Mat n n) (j : Nat) (hj : j < n) (i j' : Nat) (h : i < n ∧ j' < n) :
     (setTriCol uplo f fd C j hj)[(i, j')] =
