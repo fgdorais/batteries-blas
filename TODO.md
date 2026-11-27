@@ -121,6 +121,19 @@ real `gemv` does, would read and write `y` less often.
 - [ ] `her2` makes two passes over each column, one for the `x` term and one for the `y` term; one
   pass with both terms, in the same order, would read and write the column once.
 
+## Complex Level 3
+
+`gemm` and its variants run at 0.5–0.95× the speed of the Netlib BLAS on the cloud Xeon: at 512,
+3.1–4.2 GFLOP/s against 4.4–5.7 for `gemm`, `gemmNT`, `gemmNC`, `gemmTN` and `gemmCN`, and 1.5
+against 2.5–2.9 for the four with both factors transposed. They run the loops of `zgemm`: one
+`axpy` per column of `A` and column of `C`, or one dot product per element of `C`.
+
+- [ ] `gemm` (`A` as it is): two columns of `C` per sweep of the rows, as the real `gemm` does,
+  with each element's terms in their order.
+- [ ] `gemmTT`, `gemmTC`, `gemmCT` and `gemmCC` read the rows of `B` with the stride `ld`; copying
+  each row of `B` into a contiguous vector first, as the real `gemmTT` copies `B`, would keep the
+  order of the products.
+
 ## Level 2 (0.9–1.3× at 1024 and 2048, 1.2–1.8× at 256)
 
 - [x] `trmvT`: four elements per pass, which share the reads of `x`, each with its terms in their
