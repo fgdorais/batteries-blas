@@ -134,6 +134,15 @@ against 2.5–2.9 for the four with both factors transposed. They run the loops 
   each row of `B` into a contiguous vector first, as the real `gemmTT` copies `B`, would keep the
   order of the products.
 
+`hemm`, `hemmRight`, `herk`, `herkC`, `her2k` and `her2kC` run at 0.55–0.9× the speed of the
+Netlib BLAS at 512 on the cloud Xeon (3.2–4.2 GFLOP/s against 3.6–6.1).
+
+- [ ] `her2k` makes two passes over each column per term, one for `A` and one for `B`, and
+  `her2kC` two sums per element; one pass with both, in the same order, would read `C`, or the
+  columns of `A` and `B`, once (0.55× now).
+- [ ] `hemm` makes one pass per row for the update of the column and one for the dot product, where
+  the reference makes one.
+
 ## Level 2 (0.9–1.3× at 1024 and 2048, 1.2–1.8× at 256)
 
 - [x] `trmvT`: four elements per pass, which share the reads of `x`, each with its terms in their

@@ -29,7 +29,8 @@ lower triangle, and the triangular `trmv`, `trmvT`, `trmvC`, `trsv`, `trsvT` and
 and `ztrsv`), with a unit diagonal (`.unit`) or not. On Level 3 it has `gemm` (`zgemm`) with each
 factor as it is, transposed or conjugated and transposed: `gemm`, `gemmNT`, `gemmNC`, `gemmTN`,
 `gemmTT`, `gemmTC`, `gemmCN`, `gemmCT` and `gemmCC`, where the first letter is for `A` and the
-second for `B`.
+second for `B`, and the Hermitian `hemm` and `hemmRight` (`zhemm` with `SIDE = 'L'` and `'R'`),
+`herk` and `herkC` (`zherk` with `TRANS = 'N'` and `'C'`), and `her2k` and `her2kC` (`zher2k`).
 
 ## Usage
 
@@ -330,7 +331,12 @@ the loops of `zgemm`: with `A` as it is, each column of `C` is scaled by `β` (`
 gets `mul (mul α b) A[i, l]` for each `l` in increasing order, where `b` is the element `(l, j)` of
 `B`, `Bᵀ` or `Bᴴ`; with `A` transposed, each element is `mul α t`, plus `mul β C[i, j]` unless
 `β = 0` (even when `β = 1`), where `t` is the sum from `0` of the products in the order of `l`,
-and `C` is returned as it is when `α = 0` or `k = 0`, and `β = 1`. They were checked bit for bit
+and `C` is returned as it is when `α = 0` or `k = 0`, and `β = 1`. `hemm`, `hemmRight`, `herk`,
+`herkC`, `her2k` and `her2kC` run the loops of `zhemm`, `zherk` and `zher2k`: they read only the
+real part of the diagonal of a Hermitian `A`, `herk` and `her2k` keep the skips of the terms with
+`A[j, l] = 0` (and `B[j, l] = 0`) of `master`, multiply by the real `α` and `β` of `herk` as the
+complex numbers `(α, 0)` and `(β, 0)`, and set the imaginary part of the diagonal of `C` to `0`
+unless they return early. They were checked bit for bit
 against the Netlib BLAS 3.12 compiled with gfortran `-O2`, on random data with infinities, `NaN`s,
 signed zeros and subnormals mixed in.
 
