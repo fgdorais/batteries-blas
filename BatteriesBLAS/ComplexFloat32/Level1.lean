@@ -66,15 +66,15 @@ public theorem toNat_toUSize (x : Vec n) (hs : x.data.size < USize.size) :
 /-! ## `scal` and `rscal` -/
 
 /--
-`scal α x` is `α * x`, with the textbook product, as in the reference BLAS. As there, it returns
+`scal α x` is `α * x`, with the product `mul`, as in the reference BLAS. As there, it returns
 `x` when `α = 1`, so that an infinity in `x` doesn't turn into a `NaN`. It updates `x` in place
 when its array is not shared, and leaves the entries of the array outside `x` unchanged.
 -/
 @[expose] public def scal (α : ComplexFloat32) (x : Vec n) : Vec n :=
   if α.re == 1 && α.im == 0 then x
   else
-    { data := x.data.modifyStride2 x.reStride x.imStride n (fun u v => α.re * u - α.im * v)
-        (fun u v => α.re * v + α.im * u) x.fits_re x.fits_im
+    { data := x.data.modifyStride2 x.reStride x.imStride n (fun u v => mulRe α ⟨u, v⟩)
+        (fun u v => mulIm α ⟨u, v⟩) x.fits_re x.fits_im
       off := x.off
       inc := x.inc
       inc_pos := x.inc_pos
@@ -92,8 +92,9 @@ when its array is not shared, and leaves the entries of the array outside `x` un
   unfold scal
   split
   · rfl
-  · exact getElem_of_data_eq_modifyAt2 (v := ⟨_, x.off, x.inc, x.inc_pos, _⟩) (w := x) _ _
-      (modifyStride2_eq ..) rfl rfl i h
+  · refine (getElem_of_data_eq_modifyAt2 (v := ⟨_, x.off, x.inc, x.inc_pos, _⟩) (w := x) _ _
+      (modifyStride2_eq ..) rfl rfl i h).trans ?_
+    simp only [mulRe_eq, mulIm_eq]
 
 /--
 `rscal α x` is `α * x` for a real `α`, as `csscal` in the reference BLAS: it multiplies both
@@ -144,6 +145,65 @@ public theorem loop_im (x : Vec n) (hs : x.data.size < USize.size) :
 @[expose] public def get0 (x : Vec n) (i : Nat) : ComplexFloat32 :=
   if h : i < n then x[i] else zero
 
+/--
+The array of `y` with each element `v` replaced by `⟨fr v x[k], fi v x[k]⟩`, in one loop that
+reads `x` and updates `y` in place when its array is not shared. The parts `fr` and `fi` are
+separate functions, so that the loop keeps them in floats rather than in a `ComplexFloat32`.
+-/
+@[inline] public def zipWithData (fr fi : ComplexFloat32 → ComplexFloat32 → Float32) (x y : Vec n) :
+    Float32Array :=
+  if hs : x.data.size < USize.size ∧ y.data.size < USize.size then
+    let nu := n.toUSize
+    have hnu : nu.toNat = n := y.toNat_toUSize hs.2
+    let a := y.data
+    let o := (2 * y.off).toUSize
+    let o1 := (2 * y.off + 1).toUSize
+    let c := (2 * y.inc).toUSize
+    let xo := (2 * x.off).toUSize
+    let xo1 := (2 * x.off + 1).toUSize
+    let xc := (2 * x.inc).toUSize
+    inplace a do
+      for k in 0...nu do
+        have hk : (o + c * k).toNat < a.size := y.toNat_re_lt hs.2 (by lia)
+        have hk1 : (o1 + c * k).toNat < a.size := y.toNat_im_lt hs.2 (by lia)
+        let u := a[o + c * k]
+        let v := a[o1 + c * k]
+        a[o + c * k] := fr ⟨u, v⟩ (x.uget xo xo1 xc rfl rfl rfl hs.1 k (by lia))
+        a[o1 + c * k] := fi ⟨u, v⟩ (x.uget xo xo1 xc rfl rfl rfl hs.1 k (by lia))
+  else y.data.modifyAt2 y.reStride.idx y.imStride.idx 0 n
+    (fun i u v => fr ⟨u, v⟩ (x.get0 i)) (fun i u v => fi ⟨u, v⟩ (x.get0 i))
+
+public theorem zipWithData_eq (fr fi : ComplexFloat32 → ComplexFloat32 → Float32) (x y : Vec n) :
+    zipWithData fr fi x y = y.data.modifyAt2 y.reStride.idx y.imStride.idx 0 n
+      (fun i u v => fr ⟨u, v⟩ (x.get0 i)) (fun i u v => fi ⟨u, v⟩ (x.get0 i)) := by
+  unfold zipWithData
+  split
+  · rename_i hs
+    simp only [runInPlaceThenOf_eq, Tail.forIn_eq]
+    rw [Tail.run_forInFrom_modify2 (ia := y.reStride.idx) (ib := y.imStride.idx)
+      (F := fun i u v => fr ⟨u, v⟩ (x.get0 i)) (G := fun i u v => fi ⟨u, v⟩ (x.get0 i))
+      (hea := y.loop_re hs.2) (heb := y.loop_im hs.2)]
+    · simp only [Tail.run_done, y.toNat_toUSize hs.2, USize.toNat_zero]
+    · intro j _ hj u v
+      rw [y.toNat_toUSize hs.2] at hj
+      simp [get0, hj]
+    · intro j _ hj u v
+      rw [y.toNat_toUSize hs.2] at hj
+      simp [get0, hj]
+  · rfl
+
+public theorem size_zipWithData (fr fi : ComplexFloat32 → ComplexFloat32 → Float32) (x y : Vec n) :
+    (zipWithData fr fi x y).size = y.data.size := by
+  rw [zipWithData_eq, size_modifyAt2]
+
+/-- Element `i` of a vector whose array is `zipWithData fr fi x y`, with the place of `y`. -/
+public theorem getElem_of_data_eq_zipWithData {v : Vec n}
+    (fr fi : ComplexFloat32 → ComplexFloat32 → Float32) (x y : Vec n)
+    (hd : v.data = zipWithData fr fi x y) (ho : v.off = y.off) (hc : v.inc = y.inc) (i : Nat)
+    (h : i < n) : v[i] = ⟨fr y[i] x[i], fi y[i] x[i]⟩ := by
+  rw [getElem_of_data_eq_modifyAt2 _ _ (hd.trans (zipWithData_eq ..)) ho hc i h]
+  simp only [get0, h, ↓reduceDIte]
+
 /-- The array of `axpy`. -/
 public def axpyData (α : ComplexFloat32) (x y : Vec n) : Float32Array :=
   if hs : x.data.size < USize.size ∧ y.data.size < USize.size then
@@ -164,10 +224,8 @@ public def axpyData (α : ComplexFloat32) (x y : Vec n) : Float32Array :=
         have hk1 : (o1 + c * k).toNat < a.size := y.toNat_im_lt hs.2 (by lia)
         let u := a[o + c * k]
         let v := a[o1 + c * k]
-        a[o + c * k] := u + (ar * (x.uget xo xo1 xc rfl rfl rfl hs.1 k (by lia)).re -
-          ai * (x.uget xo xo1 xc rfl rfl rfl hs.1 k (by lia)).im)
-        a[o1 + c * k] := v + (ar * (x.uget xo xo1 xc rfl rfl rfl hs.1 k (by lia)).im +
-          ai * (x.uget xo xo1 xc rfl rfl rfl hs.1 k (by lia)).re)
+        a[o + c * k] := u + mulRe ⟨ar, ai⟩ (x.uget xo xo1 xc rfl rfl rfl hs.1 k (by lia))
+        a[o1 + c * k] := v + mulIm ⟨ar, ai⟩ (x.uget xo xo1 xc rfl rfl rfl hs.1 k (by lia))
   else y.data.modifyAt2 y.reStride.idx y.imStride.idx 0 n
     (fun i u _ => u + (mul α (x.get0 i)).re) (fun i _ v => v + (mul α (x.get0 i)).im)
 
@@ -184,14 +242,14 @@ public theorem axpyData_eq (α : ComplexFloat32) (x y : Vec n) :
     · simp only [Tail.run_done, y.toNat_toUSize hs.2, USize.toNat_zero]
     · intro j _ hj u v
       rw [y.toNat_toUSize hs.2] at hj
-      simp [get0, hj, mul]
+      simp [get0, hj]
     · intro j _ hj u v
       rw [y.toNat_toUSize hs.2] at hj
-      simp [get0, hj, mul]
+      simp [get0, hj]
   · rfl
 
 /--
-`axpy α x y` is `α * x + y`, with the textbook product. As in the reference BLAS, it returns `y`
+`axpy α x y` is `α * x + y`, with the product `mul`. As in the reference BLAS, it returns `y`
 when `|α.re| + |α.im| = 0`, without reading `x`. It updates `y` in place when its array is not
 shared, and leaves the entries of the array outside `y` unchanged.
 -/
@@ -303,34 +361,39 @@ public def swap (x y : Vec n) : Vec n × Vec n := (y, x)
 
 /--
 The loop of `dotu` and `dotc` from the index `i`, up to the bound `m`, which is `n`, with the parts
-`sr` and `si` of the sum so far: it adds `f x[i] y[i]`. It keeps them in two loop variables rather
-than a `ComplexFloat32`, which would be allocated at every step.
+`sr` and `si` of the sum so far: it adds `mul (p x[i]) y[i]`. It keeps the parts in two loop
+variables rather than a `ComplexFloat32`, which would be allocated at every step, and tests once per
+step whether the product needs the recovery of `mul`.
 -/
-@[specialize] public def dotLoop (f : ComplexFloat32 → ComplexFloat32 → ComplexFloat32)
+@[specialize] public def dotLoop (p : ComplexFloat32 → ComplexFloat32)
     (x y : Vec n) (xo xo1 xc yo yo1 yc : USize) (hxo : (2 * x.off).toUSize = xo)
     (hxo1 : (2 * x.off + 1).toUSize = xo1) (hxc : (2 * x.inc).toUSize = xc)
     (hyo : (2 * y.off).toUSize = yo) (hyo1 : (2 * y.off + 1).toUSize = yo1)
     (hyc : (2 * y.inc).toUSize = yc) (hs : x.data.size < USize.size ∧ y.data.size < USize.size)
     (m : USize) (hm : m.toNat = n) (i : USize) (sr si : Float32) : ComplexFloat32 :=
   if hi : i < m then
-    let p := f (x.uget xo xo1 xc hxo hxo1 hxc hs.1 i (hm ▸ hi))
-      (y.uget yo yo1 yc hyo hyo1 hyc hs.2 i (hm ▸ hi))
-    dotLoop f x y xo xo1 xc yo yo1 yc hxo hxo1 hxc hyo hyo1 hyc hs m hm (i + 1) (sr + p.re)
-      (si + p.im)
+    let u := p (x.uget xo xo1 xc hxo hxo1 hxc hs.1 i (hm ▸ hi))
+    let v := y.uget yo yo1 yc hyo hyo1 hyc hs.2 i (hm ▸ hi)
+    let tr := u.re * v.re - u.im * v.im
+    let ti := u.re * v.im + u.im * v.re
+    let ok := tr == tr || ti == ti
+    dotLoop p x y xo xo1 xc yo yo1 yc hxo hxo1 hxc hyo hyo1 hyc hs m hm (i + 1)
+      (sr + if ok then tr else mulRecoverRe u.re u.im v.re v.im)
+      (si + if ok then ti else mulRecoverIm u.re u.im v.re v.im)
   else ⟨sr, si⟩
 termination_by m.toNat - i.toNat
 decreasing_by
   grind
 
-private theorem dotLoop_eq (f : ComplexFloat32 → ComplexFloat32 → ComplexFloat32) (x y : Vec n)
+private theorem dotLoop_eq (p : ComplexFloat32 → ComplexFloat32) (x y : Vec n)
     (xo xo1 xc yo yo1 yc : USize) (hxo : (2 * x.off).toUSize = xo)
     (hxo1 : (2 * x.off + 1).toUSize = xo1) (hxc : (2 * x.inc).toUSize = xc)
     (hyo : (2 * y.off).toUSize = yo) (hyo1 : (2 * y.off + 1).toUSize = yo1)
     (hyc : (2 * y.inc).toUSize = yc) (hs : x.data.size < USize.size ∧ y.data.size < USize.size)
     (m : USize) (hm : m.toNat = n) (i : USize) (sr si : Float32) (j : Nat) (hj : i.toNat = j)
-    (hjn : j ≤ n) (hacc : Nat.fold j (fun l hl s => s + f x[l] y[l]) zero = ⟨sr, si⟩) :
-    dotLoop f x y xo xo1 xc yo yo1 yc hxo hxo1 hxc hyo hyo1 hyc hs m hm i sr si =
-      Nat.fold n (fun l hl s => s + f x[l] y[l]) zero := by
+    (hjn : j ≤ n) (hacc : Nat.fold j (fun l hl s => s + mul (p x[l]) y[l]) zero = ⟨sr, si⟩) :
+    dotLoop p x y xo xo1 xc yo yo1 yc hxo hxo1 hxc hyo hyo1 hyc hs m hm i sr si =
+      Nat.fold n (fun l hl s => s + mul (p x[l]) y[l]) zero := by
   obtain ⟨d, hd⟩ : ∃ d, n - j = d := ⟨_, rfl⟩
   induction d generalizing i sr si j with
   | zero =>
@@ -345,43 +408,105 @@ private theorem dotLoop_eq (f : ComplexFloat32 → ComplexFloat32 → ComplexFlo
     subst hj
     refine ih (i + 1) _ _ (i.toNat + 1) hsucc (by lia) ?_ (by lia)
     rw [Nat.fold_succ, hacc]
-    rfl
+    simp only [mul, mulRecoverRe, mulRecoverIm]
+    split <;> rfl
 
-/-- `Nat.fold n (fun i _ s => s + f x[i] y[i]) 0`, by `dotLoop`. -/
-@[inline] public def dotWith (f : ComplexFloat32 → ComplexFloat32 → ComplexFloat32)
-    (x y : Vec n) : ComplexFloat32 :=
+/--
+The loop of `dotLoop` with the textbook products only, and the flag `ok`, which stays `true` while
+no product needed the recovery of `mul`. When it ends `true`, the sum is that of `dotLoop`, and
+the loop is faster without a branch per step.
+-/
+@[specialize] public def dotFast (p : ComplexFloat32 → ComplexFloat32)
+    (x y : Vec n) (xo xo1 xc yo yo1 yc : USize) (hxo : (2 * x.off).toUSize = xo)
+    (hxo1 : (2 * x.off + 1).toUSize = xo1) (hxc : (2 * x.inc).toUSize = xc)
+    (hyo : (2 * y.off).toUSize = yo) (hyo1 : (2 * y.off + 1).toUSize = yo1)
+    (hyc : (2 * y.inc).toUSize = yc) (hs : x.data.size < USize.size ∧ y.data.size < USize.size)
+    (m : USize) (hm : m.toNat = n) (i : USize) (sr si : Float32) (ok : Bool) :
+    ComplexFloat32 × Bool :=
+  if hi : i < m then
+    let u := p (x.uget xo xo1 xc hxo hxo1 hxc hs.1 i (hm ▸ hi))
+    let v := y.uget yo yo1 yc hyo hyo1 hyc hs.2 i (hm ▸ hi)
+    let tr := u.re * v.re - u.im * v.im
+    let ti := u.re * v.im + u.im * v.re
+    dotFast p x y xo xo1 xc yo yo1 yc hxo hxo1 hxc hyo hyo1 hyc hs m hm (i + 1)
+      (sr + tr) (si + ti) (ok && (tr == tr || ti == ti))
+  else (⟨sr, si⟩, ok)
+termination_by m.toNat - i.toNat
+decreasing_by
+  grind
+
+private theorem dotFast_ok (p : ComplexFloat32 → ComplexFloat32) (x y : Vec n)
+    (xo xo1 xc yo yo1 yc : USize) (hxo : (2 * x.off).toUSize = xo)
+    (hxo1 : (2 * x.off + 1).toUSize = xo1) (hxc : (2 * x.inc).toUSize = xc)
+    (hyo : (2 * y.off).toUSize = yo) (hyo1 : (2 * y.off + 1).toUSize = yo1)
+    (hyc : (2 * y.inc).toUSize = yc) (hs : x.data.size < USize.size ∧ y.data.size < USize.size)
+    (m : USize) (hm : m.toNat = n) (i : USize) (sr si : Float32) (ok : Bool)
+    (h : (dotFast p x y xo xo1 xc yo yo1 yc hxo hxo1 hxc hyo hyo1 hyc hs m hm i sr si ok).2) :
+    ok ∧ (dotFast p x y xo xo1 xc yo yo1 yc hxo hxo1 hxc hyo hyo1 hyc hs m hm i sr si ok).1 =
+      dotLoop p x y xo xo1 xc yo yo1 yc hxo hxo1 hxc hyo hyo1 hyc hs m hm i sr si := by
+  obtain ⟨d, hd⟩ : ∃ d, m.toNat - i.toNat = d := ⟨_, rfl⟩
+  induction d generalizing i sr si ok with
+  | zero =>
+    have hi : ¬ i < m := by grind
+    rw [dotFast, dite_eq_right_of_eq_false (eq_false hi)] at h ⊢
+    rw [dotLoop, dite_eq_right_of_eq_false (eq_false hi)]
+    exact ⟨h, rfl⟩
+  | succ d ih =>
+    have hi : i < m := by grind
+    rw [dotFast, dite_eq_left_of_eq_true (eq_true hi)] at h ⊢
+    rw [dotLoop, dite_eq_left_of_eq_true (eq_true hi)]
+    obtain ⟨h₁, h₂⟩ := ih (i + 1) _ _ _ h (by grind)
+    simp only [Bool.and_eq_true] at h₁
+    refine ⟨h₁.1, h₂.trans ?_⟩
+    simp only [h₁.2, ite_true]
+
+/--
+`Nat.fold n (fun i _ s => s + mul (p x[i]) y[i]) 0`, by `dotFast`, or by `dotLoop` when a product
+needed the recovery of `mul`.
+-/
+@[inline] public def dotWith (p : ComplexFloat32 → ComplexFloat32) (x y : Vec n) : ComplexFloat32 :=
   if hs : x.data.size < USize.size ∧ y.data.size < USize.size then
-    dotLoop f x y _ _ _ _ _ _ rfl rfl rfl rfl rfl rfl hs n.toUSize (x.toNat_toUSize hs.1)
-      0 0 0
-  else Nat.fold n (fun i _ s => s + f x[i] y[i]) zero
+    let r := dotFast p x y _ _ _ _ _ _ rfl rfl rfl rfl rfl rfl hs n.toUSize
+      (x.toNat_toUSize hs.1) 0 0 0 true
+    if r.2 then r.1
+    else
+      dotLoop p x y _ _ _ _ _ _ rfl rfl rfl rfl rfl rfl hs n.toUSize (x.toNat_toUSize hs.1)
+        0 0 0
+  else Nat.fold n (fun i _ s => s + mul (p x[i]) y[i]) zero
 
-public theorem dotWith_eq (f : ComplexFloat32 → ComplexFloat32 → ComplexFloat32) (x y : Vec n) :
-    dotWith f x y = Nat.fold n (fun i _ s => s + f x[i] y[i]) zero := by
+public theorem dotWith_eq (p : ComplexFloat32 → ComplexFloat32) (x y : Vec n) :
+    dotWith p x y = Nat.fold n (fun i _ s => s + mul (p x[i]) y[i]) zero := by
   unfold dotWith
   split
-  · exact dotLoop_eq f x y _ _ _ _ _ _ rfl rfl rfl rfl rfl rfl _ _ _ 0 0 0 0 (by simp) (by lia)
-      (by simp [zero])
+  · rw [← dotLoop_eq p x y _ _ _ _ _ _ rfl rfl rfl rfl rfl rfl _ _ _ 0 0 0 0
+      (by simp) (by lia) (by simp [zero])]
+    dsimp only
+    split
+    · exact (dotFast_ok p x y _ _ _ _ _ _ rfl rfl rfl rfl rfl rfl _ _ _ _ _ _ _
+      (by assumption)).2
+    · rfl
   · rfl
 
 /--
-The unconjugated dot product `x[0] * y[0] + … + x[n - 1] * y[n - 1]`, with the textbook product,
+The unconjugated dot product `x[0] * y[0] + … + x[n - 1] * y[n - 1]`, with the product `mul`,
 summed from the left from `0`, as `cdotu` in the reference BLAS.
 -/
-public def dotu (x y : Vec n) : ComplexFloat32 := dotWith mul x y
+public def dotu (x y : Vec n) : ComplexFloat32 := dotWith id x y
 
 public theorem dotu_eq (x y : Vec n) :
     dotu x y = Nat.fold n (fun i _ s => s + mul x[i] y[i]) zero :=
-  dotWith_eq ..
+  dotWith_eq id ..
 
 /--
-The conjugated dot product `conj x[0] * y[0] + … + conj x[n - 1] * y[n - 1]`, with the textbook
-product, summed from the left from `0`, as `cdotc` in the reference BLAS.
+The conjugated dot product `conj x[0] * y[0] + … + conj x[n - 1] * y[n - 1]`, with the product
+`mul`, summed from the left from `0`, as `cdotc` in the reference BLAS.
 -/
-public def dotc (x y : Vec n) : ComplexFloat32 := dotWith (fun u v => mul u.conj v) x y
+public def dotc (x y : Vec n) : ComplexFloat32 :=
+  dotWith ComplexFloat32.conj x y
 
 public theorem dotc_eq (x y : Vec n) :
     dotc x y = Nat.fold n (fun i _ s => s + mul x[i].conj y[i]) zero :=
-  dotWith_eq ..
+  dotWith_eq ComplexFloat32.conj ..
 
 /-! ## `asum` -/
 

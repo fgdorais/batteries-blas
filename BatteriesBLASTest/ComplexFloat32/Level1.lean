@@ -233,4 +233,19 @@ def scalInPlace (n : Nat) : Bool :=
     (-(g.s.re * a.im - g.s.im * a.re) + g.c * b.im)
   z.re.abs < 1e-6 && z.im.abs < 1e-6 && g.c > 0
 
+/-! ## The arithmetic of the reference -/
+
+-- A product whose textbook parts are both `NaN` recovers the infinities, as `__muldc3` does.
+#guard mul (c inf inf) (c 1 0) == c inf inf
+#guard (mul (c inf 0) (c 2 0)).re == inf
+-- A real factor is the complex number `(r, 0)`: `-1 * 0 = -0 + 0 * I`, as in `csrot`.
+#guard
+  let (_, y) := Vec.rot (-1) 0 (.ofList (n := 1) [c 0 0]) (.ofList (n := 1) [c 0 0])
+  y[0].re.toBits == (-0.0 : Float32).toBits && y[0].im.toBits == (0.0 : Float32).toBits
+-- The quotients of `__divdc3`: a nonzero number divided by zero is infinite.
+#guard div (c 7 1) (c 2 0) == c 3.5 0.5
+#guard div (c 1 2) (c 0 1) == c 2 (-1)
+#guard (div (c 1 0) (c 0 0)).re == inf && (div (c 1 0) (c 0 0)).im.isNaN
+#guard div (c 1 1) (c inf 0) == c 0 0
+
 end BLASTest.ComplexFloat32
