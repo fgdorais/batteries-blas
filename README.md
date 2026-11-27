@@ -32,7 +32,9 @@ factor as it is, transposed or conjugated and transposed: `gemm`, `gemmNT`, `gem
 second for `B`, and the Hermitian `hemm` and `hemmRight` (`zhemm` with `SIDE = 'L'` and `'R'`),
 `herk` and `herkC` (`zherk` with `TRANS = 'N'` and `'C'`), and `her2k` and `her2kC` (`zher2k`),
 and the complex symmetric `symm` and `symmRight` (`zsymm`), `syrk` and `syrkT` (`zsyrk` with
-`TRANS = 'N'` and `'T'`), and `syr2k` and `syr2kT` (`zsyr2k`).
+`TRANS = 'N'` and `'T'`), and `syr2k` and `syr2kT` (`zsyr2k`), and the triangular `trmm`,
+`trmmT` and `trmmC`, and `trmmRight`, `trmmRightT` and `trmmRightC` (`ztrmm` with `SIDE = 'L'`
+and `'R'`), and `trsm`, `trsmT`, `trsmC`, `trsmRight`, `trsmRightT` and `trsmRightC` (`ztrsm`).
 
 ## Usage
 
@@ -340,7 +342,14 @@ real part of the diagonal of a Hermitian `A`, `herk` and `her2k` keep the skips 
 complex numbers `(α, 0)` and `(β, 0)`, and set the imaginary part of the diagonal of `C` to `0`
 unless they return early. `symm`, `symmRight`, `syrk`, `syrkT`, `syr2k` and `syr2kT` run the
 loops of `zsymm`, `zsyrk` and `zsyr2k` in the same way, with nothing conjugated, complex `α` and
-`β`, and the diagonal updated as the rest of the triangle. They were checked bit for bit
+`β`, and the diagonal updated as the rest of the triangle. `trmm` and its variants run the loops
+of `ztrmm` in `master`, without the zero skips of LAPACK 3.12: each read of `B` in those loops sees
+an element they haven't written yet, so these read `B` as it is given and write a copy of it,
+updated in place. `trsm` and its variants run the loops of `ztrsm` in `master`, without the zero
+skips, the `α = 1` skips and the multiplications by `1 / A[j, j]` of LAPACK 3.12: on the left each
+column of `B` is solved for by `trsv` or by the loops of `ztrsm` for the transposed forms, and on
+the right their specifications are the solutions of systems for the rows of `B`, solved by the
+column operations of `ztrsm` in the same order. They were checked bit for bit
 against the Netlib BLAS 3.12 compiled with gfortran `-O2`, on random data with infinities, `NaN`s,
 signed zeros and subnormals mixed in.
 
