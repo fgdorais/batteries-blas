@@ -34,7 +34,7 @@ public theorem getElem_eq_of_eq (x : Vec n) {i j : Nat} (e : i = j) (hi : i < n)
   subst e; rfl
 
 /-- The `len` elements of `x` from element `k`, as a vector, with no copy. -/
-@[expose] public def slice (x : Vec n) (k len : Nat) (h : k + len ≤ n) : Vec len where
+@[expose, inline] public def slice (x : Vec n) (k len : Nat) (h : k + len ≤ n) : Vec len where
   data := x.data
   off := x.off + x.inc * k
   inc := x.inc

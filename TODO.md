@@ -121,6 +121,16 @@ real `gemv` does, would read and write `y` less often.
 - [ ] `her2` makes two passes over each column, one for the `x` term and one for the `y` term; one
   pass with both terms, in the same order, would read and write the column once.
 
+`gbmv`, `gbmvT`, `gbmvC`, `hbmv`, `tbmv`, `tbmvT`, `tbmvC`, `tbsv`, `tbsvT` and `tbsvC` run at
+0.3–0.5× the speed of the Netlib BLAS on the cloud Xeon with `n = 20000` and 16 off-diagonals
+(1.5–3.2 ms against 0.6–1.1), and at 0.55–1.35× with 128 off-diagonals. With short columns the
+work per column dominates: the slices of the column and of the vector, and the sizes of the band
+in `Nat`.
+
+- [ ] Band: compute the band geometry of each column in `USize` and run the inner loop on the raw
+  array, without building the slices.
+- [ ] `hbmv` makes two passes over each column, as `hemv` does (0.3× with 16 off-diagonals).
+
 ## Complex Level 3
 
 `gemm` and its variants run at 0.5–0.95× the speed of the Netlib BLAS on the cloud Xeon: at 512,

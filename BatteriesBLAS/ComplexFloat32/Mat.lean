@@ -50,7 +50,7 @@ public theorem col_le (A : Mat m n) {j : Nat} (hm : 0 < m) (hj : j < n) :
   rcases A.bound with h | h | h <;> lia
 
 /-- Column `j` as a contiguous vector, with no copy. -/
-@[expose] public def col (A : Mat m n) (j : Nat) (hj : j < n) : Vec m where
+@[expose, inline] public def col (A : Mat m n) (j : Nat) (hj : j < n) : Vec m where
   data := A.data
   off := A.off + A.ld * j
   inc := 1
