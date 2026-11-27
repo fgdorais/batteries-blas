@@ -102,6 +102,15 @@ At 512 on the cloud Xeon, `gemv`, `gemvT`, `gemvC` and `geru` run at 5.6–6.8 G
 5.5–6.2 for the Netlib BLAS. They take one column of `A` per pass; several columns per pass, as the
 real `gemv` does, would read and write `y` less often.
 
+`hemv`, `her` and `her2` run at 0.72–1.0× the speed of the Netlib BLAS at 512 (4.1–5.4 against
+4.4–6.2 GFLOP/s).
+
+- [ ] `hemv` makes two passes over each column, the `axpy` into `y` and the dot product with `x`,
+  where the reference makes one; fusing them, with each sum in its order, would read the column
+  once.
+- [ ] `her2` makes two passes over each column, one for the `x` term and one for the `y` term; one
+  pass with both terms, in the same order, would read and write the column once.
+
 ## Level 2 (0.9–1.3× at 1024 and 2048, 1.2–1.8× at 256)
 
 - [x] `trmvT`: four elements per pass, which share the reads of `x`, each with its terms in their

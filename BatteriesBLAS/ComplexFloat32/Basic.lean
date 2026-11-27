@@ -32,6 +32,13 @@ namespace BLAS.ComplexFloat32
 @[inline, expose] public def rmul (α : Float32) (z : ComplexFloat32) : ComplexFloat32 :=
   ⟨α * z.re, α * z.im⟩
 
+/--
+The product `(z.re * r, z.im * r)` of a complex and a real number, with the real number on the
+right, as gfortran computes `TEMP1*DBLE(A(J,J))` in `chemv`.
+-/
+@[inline, expose] public def mulr (z : ComplexFloat32) (r : Float32) : ComplexFloat32 :=
+  ⟨z.re * r, z.im * r⟩
+
 /-- `|z.re| + |z.im|`, the absolute value that the reference BLAS uses in `icamax` and `scasum`. -/
 @[inline, expose] public def abs1 (z : ComplexFloat32) : Float32 := z.re.abs + z.im.abs
 
