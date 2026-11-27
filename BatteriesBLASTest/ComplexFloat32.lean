@@ -11,3 +11,5 @@ import BatteriesBLASTest.ComplexFloat32.Tri
 import BatteriesBLASTest.ComplexFloat32.Gemm
 import BatteriesBLASTest.ComplexFloat32.Herm3
 import BatteriesBLASTest.ComplexFloat32.Symm3
+import BatteriesBLASTest.ComplexFloat32.Trmm3
+import BatteriesBLASTest.ComplexFloat32.Trsm3
