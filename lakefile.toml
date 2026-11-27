@@ -26,7 +26,7 @@ rev = "nightly-testing"
 [[require]]
 name = "batteries-complex-float"
 git = "https://github.com/fgdorais/batteries-complex-float"
-rev = "main"
+rev = "nightly-testing"
 
 [[lean_lib]]
 name = "BatteriesBLAS"
