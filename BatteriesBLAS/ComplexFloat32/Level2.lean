@@ -15,7 +15,7 @@ Matrix-vector operations on complex matrices: the products `gemv` (`y := α * A 
 updates `geru` (`A := α * x * yᵀ + A`) and `gerc` (`A := α * x * yᴴ + A`).
 
 Each routine computes every element with the operations of `cgemv`, `cgeru` and `cgerc` in the
-reference BLAS (`master`), in the same order, with the textbook complex product. `gemv` adds the
+reference BLAS (`master`), in the same order, with the complex product `mul`. `gemv` adds the
 columns of `A` to `y` one at a time, as an `axpy` without the early return; `gemvT` and `gemvC`
 compute each element of `y` from a `dotu` or `dotc` of a column of `A` with `x`; `geru` and `gerc`
 update `A` one column at a time, in place when its array is not shared, and skip the columns `j`
@@ -34,7 +34,7 @@ namespace BLAS.ComplexFloat32
 
 /--
 `β * v` as the reference BLAS scales `y` in `cgemv`: `v` when `β = 1`, `0` when `β = 0`, without
-reading `v`, and the textbook product otherwise.
+reading `v`, and `mul β v` otherwise.
 -/
 @[expose] public def betaMul (β v : ComplexFloat32) : ComplexFloat32 :=
   if isOne β then v else if isZero β then zero else mul β v
@@ -87,10 +87,8 @@ public def axpyRData (α : ComplexFloat32) (x y : Vec n) : Float32Array :=
         have hk1 : (o1 + c * k).toNat < a.size := y.toNat_im_lt hs.2 (by lia)
         let u := a[o + c * k]
         let v := a[o1 + c * k]
-        a[o + c * k] := u + ((x.uget xo xo1 xc rfl rfl rfl hs.1 k (by lia)).re * ar -
-          (x.uget xo xo1 xc rfl rfl rfl hs.1 k (by lia)).im * ai)
-        a[o1 + c * k] := v + ((x.uget xo xo1 xc rfl rfl rfl hs.1 k (by lia)).re * ai +
-          (x.uget xo xo1 xc rfl rfl rfl hs.1 k (by lia)).im * ar)
+        a[o + c * k] := u + mulRe (x.uget xo xo1 xc rfl rfl rfl hs.1 k (by lia)) ⟨ar, ai⟩
+        a[o1 + c * k] := v + mulIm (x.uget xo xo1 xc rfl rfl rfl hs.1 k (by lia)) ⟨ar, ai⟩
   else y.data.modifyAt2 y.reStride.idx y.imStride.idx 0 n
     (fun i u _ => u + (mul (x.get0 i) α).re) (fun i _ v => v + (mul (x.get0 i) α).im)
 
@@ -107,10 +105,10 @@ public theorem axpyRData_eq (α : ComplexFloat32) (x y : Vec n) :
     · simp only [Tail.run_done, y.toNat_toUSize hs.2, USize.toNat_zero]
     · intro j _ hj u v
       rw [y.toNat_toUSize hs.2] at hj
-      simp [get0, hj, mul]
+      simp [get0, hj]
     · intro j _ hj u v
       rw [y.toNat_toUSize hs.2] at hj
-      simp [get0, hj, mul]
+      simp [get0, hj]
   · rfl
 
 /--

@@ -359,14 +359,14 @@ public theorem getElem_hemv (uplo : Float64.Uplo) (α : ComplexFloat) (A : Mat n
 
 /--
 Element `(i, j)` of `her uplo α x A` from its old value `a`, for `α ≠ 0`: with
-`t = rmul α x[j].conj`, it adds `mul x[i] t` in the triangle, and on the diagonal it gives
+`t = mul (ofReal α) x[j].conj`, it adds `mul x[i] t` in the triangle, and on the diagonal it gives
 `⟨a.re + (mul x[j] t).re, 0⟩` in the upper triangle and `⟨a.re + (mul t x[j]).re, 0⟩` in the
 lower one, as `zher`; a column with `x[j] = 0` keeps its elements, but the imaginary part of its
 diagonal is set to `0`.
 -/
 @[expose] public def herAt (uplo : Float64.Uplo) (α : Float) (x : Vec n) (i j : Nat) (hi : i < n)
     (hj : j < n) (a : ComplexFloat) : ComplexFloat :=
-  let t := rmul α x[j].conj
+  let t := mul (ofReal α) x[j].conj
   if isZero x[j] then (if i = j then ⟨a.re, 0⟩ else a)
   else if i = j then ⟨a.re + (if uplo = .upper then mul x[j] t else mul t x[j]).re, 0⟩
   else if InTri uplo i j then a + mul x[i] t
@@ -394,7 +394,7 @@ public def herCol (uplo : Float64.Uplo) (α : Float) (x : Vec n) (j : Nat) (hj :
     (A : Mat n n) : Mat n n :=
   if isZero x[j] then A.setDiag j hj id
   else
-    let t := rmul α x[j].conj
+    let t := mul (ofReal α) x[j].conj
     if uplo = .upper then
       let A := A.withColSlice j hj 0 j (by lia)
         (fun s => Vec.axpyRData t (x.slice 0 j (by lia)) s)
@@ -420,8 +420,8 @@ private theorem getElem_withColSlice_axpyR (A : Mat n n) (j : Nat) (hj : j < n) 
     rfl
   · rfl
 
-private theorem getElem_herCol (uplo : Float64.Uplo) (α : Float) (x : Vec n) (j : Nat) (hj : j < n)
-    (A : Mat n n) (i j' : Nat) (h : i < n ∧ j' < n) :
+private theorem getElem_herCol (uplo : Float64.Uplo) (α : Float) (x : Vec n) (j : Nat)
+    (hj : j < n) (A : Mat n n) (i j' : Nat) (h : i < n ∧ j' < n) :
     (herCol uplo α x j hj A)[(i, j')] =
       if j = j' then herAt uplo α x i j h.1 hj A[(i, j')] else A[(i, j')] := by
   unfold herCol herAt
