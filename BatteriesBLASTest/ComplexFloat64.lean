@@ -6,3 +6,4 @@ module
 
 import BatteriesBLASTest.ComplexFloat64.Level1
 import BatteriesBLASTest.ComplexFloat64.Level2
+import BatteriesBLASTest.ComplexFloat64.Herm

@@ -23,7 +23,9 @@ stores its elements interleaved in a `Float64Array` (or `Float32Array`), the rea
 element followed by its imaginary part, as Fortran and C do; its offset and stride count elements.
 Complex matrices, `BLAS.ComplexFloat64.Mat m n`, are stored the same way in column-major order,
 with an offset and a leading dimension counted in elements. On them it has `gemv`, `gemvT` and
-`gemvC` (`zgemv` with `TRANS = 'N'`, `'T'` and `'C'`), `geru` and `gerc`.
+`gemvC` (`zgemv` with `TRANS = 'N'`, `'T'` and `'C'`), `geru` and `gerc`, and the Hermitian
+`hemv`, `her` and `her2`, which read and update the upper triangle of `A` (`upper := true`) or its
+lower triangle.
 
 ## Usage
 
@@ -306,7 +308,10 @@ imaginary part. `asum` and `iamax` use `|re| + |im|`, `nrm2` is Blue's algorithm
 part and then the imaginary part of each element, and `rotg` is the `zrotg` of `master`. `gemv`
 scales `y` by `β` (`betaMul`: zeros when `β = 0`) and then adds the columns of `A`; `gemvT` and
 `gemvC` add `α` times the `dotu` or `dotc` of each column with `x`; `geru` and `gerc` skip the
-columns `j` with `y[j] = 0`, as the reference BLAS does. They were checked bit for bit against the
+columns `j` with `y[j] = 0`, as the reference BLAS does. `hemv`, `her` and `her2` follow
+`zhemv`, `zher` and `zher2`: they use only the real part of the diagonal of `A`, `her` and `her2`
+set its imaginary part to `0` (even in a column skipped for a zero `x[j]`, or `x[j]` and `y[j]`),
+and `her2` adds the `x` term and then the `y` term to each element. They were checked bit for bit against the
 Netlib BLAS compiled with gfortran `-O2`.
 
 ## Conformance
