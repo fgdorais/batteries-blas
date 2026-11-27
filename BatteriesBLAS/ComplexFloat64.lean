@@ -18,6 +18,7 @@ public import BatteriesBLAS.ComplexFloat64.Symm3
 public import BatteriesBLAS.ComplexFloat64.Trmm3
 public import BatteriesBLAS.ComplexFloat64.Trsm3
 public import BatteriesBLAS.ComplexFloat64.Band
+public import BatteriesBLAS.ComplexFloat64.Packed
 
 /-!
 # BLAS on `ComplexFloat`
