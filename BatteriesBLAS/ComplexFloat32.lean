@@ -11,6 +11,7 @@ public import BatteriesBLAS.ComplexFloat32.Rot
 public import BatteriesBLAS.ComplexFloat32.Mat
 public import BatteriesBLAS.ComplexFloat32.Level2
 public import BatteriesBLAS.ComplexFloat32.Herm
+public import BatteriesBLAS.ComplexFloat32.Tri
 
 /-!
 # BLAS on `ComplexFloat32`
